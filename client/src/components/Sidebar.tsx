@@ -19,7 +19,6 @@ export default function Sidebar({ activeTab, onTabChange, user, onLogout }: Side
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'classes', label: 'Lớp học', icon: '📚' },
-    { id: 'classroom', label: 'Phòng học ảo', icon: '🏫' }, // ⭐ thêm tab map
     { id: 'lectures', label: 'Bài giảng', icon: '📖' },
     { id: 'assignments', label: 'Bài tập', icon: '📝' },
     { id: 'students', label: 'Sinh viên', icon: '👥' },

@@ -33,7 +33,7 @@ function MainApp() {
         return <Dashboard />;
 
       case "classes":
-        return <Classes />;
+        return <Classes onJoinClassroom={() => setActiveTab('classroom')} />;
 
       case "lectures":
         return <Lectures />;

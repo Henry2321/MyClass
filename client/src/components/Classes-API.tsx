@@ -118,7 +118,11 @@ function ClassManageModal({ classData, onClose, onDelete }: ClassManageModalProp
   );
 }
 
-export default function Classes() {
+interface ClassesProps {
+  onJoinClassroom?: () => void;
+}
+
+export default function Classes({ onJoinClassroom }: ClassesProps) {
   const { user } = useAuth();
   const [classes, setClasses] = useState<Class[]>([]);
   const [loading, setLoading] = useState(true);
@@ -193,8 +197,12 @@ export default function Classes() {
   };
 
   const handleJoinMeeting = (classData: Class) => {
-    setSelectedClassForMeeting(classData);
-    setShowVideoMeeting(true);
+    if (onJoinClassroom) {
+      onJoinClassroom();
+    } else {
+      setSelectedClassForMeeting(classData);
+      setShowVideoMeeting(true);
+    }
   };
 
   const handleLeaveMeeting = () => {
