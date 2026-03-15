@@ -6,14 +6,20 @@ export default function ClassroomView(){
 
     <div
       style={{
-        width:"100%",
-        height:"100%",
-        overflow:"auto",
-        padding: "20px"
+        width: "calc(100% + 80px)",
+        height: "calc(100% + 80px)", // using 100% to fill .main
+        margin: "-40px",
+        padding: 0,
+        overflow: "hidden",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        backgroundColor: "white"
       }}
     >
-      <h2 className="title">Phòng học ảo</h2>
-      <ClassCanvas />
+      <div style={{ width: "100%", height: "100%", display: "flex", justifyContent: "center", alignItems: "center" }}>
+        <ClassCanvas />
+      </div>
     </div>
 
   )
