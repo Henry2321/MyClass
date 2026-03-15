@@ -1,15 +1,37 @@
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 
 export default function ClassCanvas() {
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [isJoined, setIsJoined] = useState(false)
+  const [userName, setUserName] = useState("")
+  const [studentId, setStudentId] = useState("")
+  const [selectedCharIndex, setSelectedCharIndex] = useState(0)
+
+  const characters = ["adam", "ash", "lucy", "nancy"]
+  
+  // Sử dụng useRef cho các biến state để đảm bảo vòng lặp game luôn đọc được giá trị mới nhất
+  const player = useRef({
+    x: 400,
+    y: 400,
+    speed: 3 // Giảm tốc độ di chuyển
+  })
+
+  const keys = useRef<Set<string>>(new Set())
+  const isSitting = useRef(false)
+  const currentDir = useRef(0) // 0: Down, 1: Up, 2: Left, 3: Right
+  const isMoving = useRef(false)
+  const canSit = useRef(false)
+  const seatPos = useRef({ x: 0, y: 0 })
+  const frameX = useRef(0)
+  const frameTimer = useRef(0)
 
   useEffect(() => {
+    if (!isJoined) return // Không chạy game loop nếu chưa join
 
     const canvas = canvasRef.current!
     const ctx = canvas.getContext("2d")!
     
-    // Ensure canvas can receive focus for keyboard events if needed
     canvas.tabIndex = 1
     canvas.style.outline = "none"
 
@@ -47,62 +69,40 @@ export default function ClassCanvas() {
       })
 
     const playerImg = new Image()
-    playerImg.src="/sprites/adam.png"
-
-    const player={
-      x:200,
-      y:200,
-      speed:4
-    }
-
-    let frameX=0
-    let frameTimer=0
-    let currentDir = 0 // Mapping based on user feedback: 0:down, 1:up, 2:left, 3:right
-    let isMoving = false
-    let isSitting = false
-    let canSit = false
-    let seatPos = { x: 0, y: 0 }
-
-    const keys:Record<string,boolean>={}
+    playerImg.src=`/sprites/${characters[selectedCharIndex]}.png`
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      const key = e.key // Use original key string
-      keys[key] = true
+      const key = e.key.toLowerCase()
+      const code = e.code.toLowerCase()
       
-      // Also store lowercase version for easier checking
-      keys[key.toLowerCase()] = true
-
-      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "w", "a", "s", "d", "W", "A", "S", "D", "h", "H"].includes(key)) {
+      keys.current.add(key)
+      keys.current.add(code)
+      
+      if (["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d", "h"].includes(key) || 
+          ["keyw", "keya", "keys", "keyd"].includes(code)) {
         e.preventDefault()
       }
 
-      // Handle Sit/Stand with 'H' - only on initial press, not repeat
-      if (key.toLowerCase() === "h" && !e.repeat) {
-        if (isSitting) {
-          isSitting = false
-        } else if (canSit) {
-          isSitting = true
-          // Force facing Up (towards teacher/blackboard)
-          // Based on our 0:Right, 1:Up, 2:Left, 3:Down mapping
-          currentDir = 1 
-          // Snap exactly to seat with perfect offset
-          player.x = seatPos.x
-          player.y = seatPos.y - 12 // Centered on tile
+      if ((key === "h" || code === "keyh") && !e.repeat) {
+        if (isSitting.current) {
+          isSitting.current = false
+          player.current.y += 16
+        } else if (canSit.current) {
+          isSitting.current = true
+          currentDir.current = 1 
+          player.current.x = seatPos.current.x
+          player.current.y = seatPos.current.y - 12
         }
       }
     }
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      const key = e.key
-      keys[key] = false
-      keys[key.toLowerCase()] = false
+      keys.current.delete(e.key.toLowerCase())
+      keys.current.delete(e.code.toLowerCase())
     }
 
     const handleBlur = () => {
-      // Clear all keys when window loses focus
-      for (const key in keys) {
-        keys[key] = false
-      }
+      keys.current.clear()
     }
 
     window.addEventListener("keydown", handleKeyDown, { capture: true })
@@ -110,82 +110,117 @@ export default function ClassCanvas() {
     window.addEventListener("blur", handleBlur)
 
     function update(){
-      // Scan for seats nearby
-      canSit = false
+      // Kiểm tra vị trí ngồi
+      canSit.current = false
       if (mapData) {
-        // Use a slightly larger detection area for convenience
-        const checkX = player.x + 16
-        const checkY = player.y + 32
-        
-        const tx = Math.floor(checkX / tileSize)
-        const ty = Math.floor(checkY / tileSize)
+        const tx = Math.floor((player.current.x + 16) / tileSize)
+        const ty = Math.floor((player.current.y + 40) / tileSize)
 
         if (tx >= 0 && tx < mapData.width && ty >= 0 && ty < mapData.height) {
           const index = ty * mapData.width + tx
-          let tileFound = false
           for (const layer of mapData.layers) {
             const name = (layer as any).name
-            if (name === "Class" || name === "Objects" || name === "cảnh vật") {
+            if (name === "Class" || name === "Objects" || name === "cảnh vật" || name === "c\u1ea3nh v\u1eadt") {
               if (layer.data[index] !== 0) {
-                tileFound = true
+                canSit.current = true
+                seatPos.current = { x: tx * tileSize, y: ty * tileSize }
                 break
               }
             }
           }
-          if (tileFound) {
-            canSit = true
-            seatPos = { x: tx * tileSize, y: ty * tileSize }
-          }
         }
       }
 
-      if (isSitting) {
-        isMoving = false
+      if (isSitting.current) {
+        isMoving.current = false
         return
       }
       
-      isMoving = false
+      isMoving.current = false
       let moveX = 0
       let moveY = 0
 
-      // Keyboard control - checking multiple possible key strings
-      if(keys["ArrowUp"] || keys["w"]){
-        moveY = -1
-        currentDir = 1 // Up
-        isMoving = true
-      }
-      else if(keys["ArrowDown"] || keys["s"]){
-        moveY = 1
-        currentDir = 3 // Down
-        isMoving = true
-      }
-      
-      if(keys["ArrowLeft"] || keys["a"]){
-        moveX = -1
-        currentDir = 2 // Left
-        isMoving = true
-      }
-      else if(keys["ArrowRight"] || keys["d"]){
-        moveX = 1
-        currentDir = 0 // Right
-        isMoving = true
+      if(keys.current.has("arrowup") || keys.current.has("w") || keys.current.has("keyw")) moveY = -1
+      if(keys.current.has("arrowdown") || keys.current.has("s") || keys.current.has("keys")) moveY = 1
+      if(keys.current.has("arrowleft") || keys.current.has("a") || keys.current.has("keya")) moveX = -1
+      if(keys.current.has("arrowright") || keys.current.has("d") || keys.current.has("keyd")) moveX = 1
+
+      if (moveX !== 0 || moveY !== 0) {
+        const spd = player.current.speed
+
+        // Chặn tường trên và tường dưới theo tọa độ
+        // Top wall around 80px, Bottom wall around 840px
+        const nextX = player.current.x + moveX * spd
+        const nextY = player.current.y + moveY * spd
+
+        // Check horizontal
+        if (moveX !== 0) {
+          let canMoveX = true
+          if (nextX < 0 || nextX > 1280 - 32) canMoveX = false
+          
+          if (canMoveX && mapData) {
+            const tx = Math.floor((nextX + 16) / tileSize)
+            const ty = Math.floor((player.current.y + 44) / tileSize)
+            const index = ty * mapData.width + tx
+            if (index >= 0 && index < mapData.width * mapData.height) {
+              for (const layer of mapData.layers) {
+                const ln = (layer as any).name
+                if (ln === "cảnh vật" || ln === "c\u1ea3nh v\u1eadt") {
+                  const tile = layer.data[index]
+                  // Chỉ chặn nếu là TỦ SÁCH (3878-3896)
+                  if (tile >= 3878 && tile <= 3896) {
+                    canMoveX = false
+                    break
+                  }
+                }
+              }
+            }
+          }
+          if (canMoveX) { player.current.x = nextX; isMoving.current = true; }
+        }
+
+        // Check vertical
+        if (moveY !== 0) {
+          let canMoveY = true
+          // Chặn tường trên và tường dưới
+          if (nextY < 80 || nextY > 840) canMoveY = false
+          
+          if (canMoveY && mapData) {
+            const tx = Math.floor((player.current.x + 16) / tileSize)
+            const ty = Math.floor((nextY + 44) / tileSize)
+            const index = ty * mapData.width + tx
+            if (index >= 0 && index < mapData.width * mapData.height) {
+              for (const layer of mapData.layers) {
+                const ln = (layer as any).name
+                if (ln === "cảnh vật" || ln === "c\u1ea3nh v\u1eadt") {
+                  const tile = layer.data[index]
+                  // Chỉ chặn nếu là TỦ SÁCH (3878-3896)
+                  if (tile >= 3878 && tile <= 3896) {
+                    canMoveY = false
+                    break
+                  }
+                }
+              }
+            }
+          }
+          if (canMoveY) { player.current.y = nextY; isMoving.current = true; }
+        }
+
+        // Cập nhật hướng quay (0:Down, 1:Up, 2:Left, 3:Right)
+        if (moveY < 0) currentDir.current = 1 // Up
+        else if (moveY > 0) currentDir.current = 0 // Down
+        else if (moveX < 0) currentDir.current = 2 // Left
+        else if (moveX > 0) currentDir.current = 3 // Right
       }
 
-      if (isMoving) {
-        player.x = Math.max(0, Math.min(1280 - 32, player.x + moveX * player.speed))
-        player.y = Math.max(0, Math.min(960 - 48, player.y + moveY * player.speed))
-
-        frameTimer++
-        if(frameTimer > 6){
-          frameX = (frameX + 1) % 6
-          frameTimer = 0
+      if(isMoving.current){
+        frameTimer.current++
+        if(frameTimer.current > 8){
+          frameX.current = (frameX.current + 1) % 6
+          frameTimer.current = 0
         }
       } else {
-        frameTimer++
-        if(frameTimer > 10){
-          frameX = (frameX + 1) % 6
-          frameTimer = 0
-        }
+        frameX.current = 0 // Idle frame
       }
     }
 
@@ -201,32 +236,75 @@ export default function ClassCanvas() {
 
     function drawMap(){
       if(!mapData)return
+      
       for(const layer of mapData.layers){
-        for(let i=0;i<layer.data.length;i++){
-          const tile=layer.data[i]
-          if(tile===0)continue
-          const mapWidth=mapData.width
-          const x=(i%mapWidth)*tileSize
-          const y=Math.floor(i/mapWidth)*tileSize
-          const tileset=getTileset(tile)
-          if(!tileset.img.complete)continue
-          const tileIndex=tile-tileset.firstgid
-          const tilesPerRow=Math.floor(tileset.img.width/tileSize)
-          const sx=(tileIndex%tilesPerRow)*tileSize
-          const sy=Math.floor(tileIndex/tilesPerRow)*tileSize
-          ctx.drawImage(
-            tileset.img,
-            sx,
-            sy,
-            tileSize,
-            tileSize,
-            x,
-            y,
-            tileSize,
-            tileSize
-          )
+        const name = (layer as any).name
+        if (name === "Floor") {
+          drawLayer(layer)
         }
       }
+
+      for(const layer of mapData.layers){
+        const name = (layer as any).name
+        if (name === "Class" || name === "Objects") {
+          drawLayer(layer)
+        }
+      }
+
+      const playerFeetY = player.current.y + 44
+      
+      for(const layer of mapData.layers){
+        const name = (layer as any).name
+        if (name === "cảnh vật" || name === "c\u1ea3nh v\u1eadt") {
+          // Draw tiles that are BEHIND the player feet (depth sorting)
+          drawLayerCustom(layer, (tileY) => tileY + 24 <= playerFeetY)
+        }
+      }
+
+      drawPlayer()
+
+      for(const layer of mapData.layers){
+        const name = (layer as any).name
+        if (name === "cảnh vật" || name === "c\u1ea3nh v\u1eadt") {
+          // Draw tiles that are IN FRONT OF the player feet (depth sorting)
+          drawLayerCustom(layer, (tileY) => tileY + 24 > playerFeetY)
+        }
+      }
+    }
+
+    function drawLayerCustom(layer: MapLayer, condition: (tileY: number) => boolean) {
+      if(!mapData) return
+      for(let i=0;i<layer.data.length;i++){
+        const tile=layer.data[i]
+        if(tile===0)continue
+        const mapWidth=mapData.width
+        const x=(i%mapWidth)*tileSize
+        const y=Math.floor(i/mapWidth)*tileSize
+        
+        if (!condition(y)) continue
+
+        const tileset=getTileset(tile)
+        if(!tileset.img.complete)continue
+        const tileIndex=tile-tileset.firstgid
+        const tilesPerRow=Math.floor(tileset.img.width/tileSize)
+        const sx=(tileIndex%tilesPerRow)*tileSize
+        const sy=Math.floor(tileIndex/tilesPerRow)*tileSize
+        ctx.drawImage(
+          tileset.img,
+          sx,
+          sy,
+          tileSize,
+          tileSize,
+          x,
+          y,
+          tileSize,
+          tileSize
+        )
+      }
+    }
+
+    function drawLayer(layer: MapLayer) {
+      drawLayerCustom(layer, () => true)
     }
 
     function drawPlayer(){
@@ -236,24 +314,18 @@ export default function ClassCanvas() {
       
       let actualFrameX = 0
       
-      if (isSitting) {
-        // Mapping based on user feedback: 0:Right, 1:Up, 2:Left, 3:Down
-        // Sprite indices: 48:Down, 49:Left, 50:Right, 51:Up
-        const sitMap = [50, 51, 49, 48]
-        actualFrameX = sitMap[currentDir]
-      } else if (isMoving) {
-        // Mapping: 0:Right, 1:Up, 2:Left, 3:Down
-        // Sprite indices: 24:Down, 30:Left, 36:Right, 42:Up
-        const runStarts = [36, 42, 30, 24]
-        actualFrameX = runStarts[currentDir] + frameX
-      } else {
-        // Mapping: 0:Right, 1:Up, 2:Left, 3:Down
-        // Sprite indices: 0:Down, 6:Left, 12:Right, 18:Up
-        const idleStarts = [12, 18, 6, 0]
-        actualFrameX = idleStarts[currentDir] + frameX
+      // Mapping: 0: Down, 1: Up, 2: Left, 3: Right
+      if (isSitting.current) {
+        const sitMap = [48, 51, 49, 50]
+        actualFrameX = sitMap[currentDir.current]
+      } else if (isMoving.current) {
+        const runStarts = [24, 42, 30, 36]
+        actualFrameX = runStarts[currentDir.current] + frameX.current
+      } else { 
+        const idleStarts = [0, 18, 6, 12]
+        actualFrameX = idleStarts[currentDir.current] + frameX.current
       }
 
-      // Check for index overflow
       if (actualFrameX >= 52) actualFrameX = 0
 
       ctx.drawImage(
@@ -262,20 +334,50 @@ export default function ClassCanvas() {
         0,
         frameWidth,
         frameHeight,
-        player.x,
-        player.y,
+        player.current.x,
+        player.current.y,
         frameWidth,
         frameHeight
       )
+
+      // Vẽ tên trên đầu nhân vật
+      if (userName) {
+        ctx.font = "bold 12px Arial"
+        const textWidth = ctx.measureText(userName).width
+        
+        // Vẽ nền cho tên (giúp dễ đọc hơn)
+        ctx.beginPath() // Thêm beginPath để tránh để lại vệt đen khi di chuyển
+        ctx.fillStyle = "rgba(0, 0, 0, 0.5)"
+        ctx.roundRect(
+          player.current.x + (frameWidth / 2) - (textWidth / 2) - 5, 
+          player.current.y - 20, 
+          textWidth + 10, 
+          16, 
+          4
+        )
+        ctx.fill()
+        ctx.closePath()
+
+        // Vẽ chữ tên
+        ctx.fillStyle = "white"
+        ctx.textAlign = "center"
+        ctx.fillText(
+          userName, 
+          player.current.x + (frameWidth / 2), 
+          player.current.y - 8
+        )
+        // Reset textAlign về mặc định cho các phần vẽ khác
+        ctx.textAlign = "start"
+      }
     }
 
     function drawUI(){
-      if (canSit && !isSitting) {
+      if (canSit.current && !isSitting.current) {
         ctx.fillStyle = "rgba(0,0,0,0.7)"
-        ctx.fillRect(player.x - 35, player.y - 40, 110, 24)
+        ctx.fillRect(player.current.x - 35, player.current.y - 40, 110, 24)
         ctx.fillStyle = "white"
         ctx.font = "bold 11px Arial"
-        ctx.fillText("Nhấn H để ngồi", player.x - 15, player.y - 24)
+        ctx.fillText("Nhấn H để ngồi", player.current.x - 15, player.current.y - 24)
       }
     }
 
@@ -285,12 +387,10 @@ export default function ClassCanvas() {
       ctx.clearRect(0,0,canvas.width,canvas.height)
       update()
       drawMap()
-      drawPlayer()
       drawUI()
       animationId = requestAnimationFrame(loop)
     }
 
-    // Force restart loop if it's not running
     if (playerImg.complete) {
       loop()
     } else {
@@ -299,7 +399,6 @@ export default function ClassCanvas() {
       }
     }
 
-    // Fallback if image load event is missed
     setTimeout(() => {
        if (!animationId) {
           loop()
@@ -313,17 +412,232 @@ export default function ClassCanvas() {
       cancelAnimationFrame(animationId)
     }
 
-  }, [])
+  }, [isJoined]) // Chạy lại useEffect khi isJoined thay đổi
 
   return(
+    <div style={{ position: "relative", width: "100%", height: "100%", backgroundColor: "#1a1b26" }}>
+      {!isJoined && (
+        <div style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: "100%",
+          height: "100%",
+          backgroundColor: "rgba(0, 0, 0, 0.8)",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          zIndex: 1000,
+          fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"
+        }}>
+          <div style={{
+            backgroundColor: "#20212b",
+            padding: "40px",
+            borderRadius: "20px",
+            width: "650px",
+            color: "white",
+            textAlign: "center",
+            boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)"
+          }}>
+            <h2 style={{ marginBottom: "40px", fontSize: "24px", fontWeight: "500", color: "#e2e8f0" }}>
+              Welcome To TDS Classroom
+            </h2>
+            
+            <div style={{ display: "flex", gap: "40px", marginBottom: "40px" }}>
+              {/* Left Column: Character Selection */}
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center" }}>
+                <div style={{ 
+                  backgroundColor: "#e5e7eb", 
+                  borderRadius: "12px", 
+                  width: "100%",
+                  height: "220px", 
+                  display: "flex", 
+                  alignItems: "center", 
+                  justifyContent: "center",
+                  marginBottom: "20px"
+                }}>
+                   {/* Fix: Chỉ hiển thị 1 frame của nhân vật bằng background-image */}
+                   <div style={{
+                     width: "32px",
+                     height: "48px",
+                     backgroundImage: `url(/sprites/${characters[selectedCharIndex]}.png)`,
+                     backgroundPosition: "0px 0px", // Frame đầu tiên (Idle Down)
+                     backgroundRepeat: "no-repeat",
+                     transform: "scale(3.5)",
+                     imageRendering: "pixelated"
+                   }} />
+                </div>
+                <div style={{ display: "flex", justifyContent: "center", gap: "30px" }}>
+                   <button 
+                    onClick={() => setSelectedCharIndex((prev) => (prev - 1 + characters.length) % characters.length)}
+                    style={{ 
+                      background: "none", 
+                      border: "1px solid #4b4c56", 
+                      color: "white", 
+                      borderRadius: "50%", 
+                      width: "32px", 
+                      height: "32px", 
+                      cursor: "pointer",
+                      fontSize: "18px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center"
+                    }}>
+                      ‹
+                   </button>
+                   <button 
+                    onClick={() => setSelectedCharIndex((prev) => (prev + 1) % characters.length)}
+                    style={{ 
+                      background: "none", 
+                      border: "1px solid #4b4c56", 
+                      color: "white", 
+                      borderRadius: "50%", 
+                      width: "32px", 
+                      height: "32px", 
+                      cursor: "pointer",
+                      fontSize: "18px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center"
+                    }}>
+                      ›
+                   </button>
+                </div>
+              </div>
 
-    <canvas
-      ref={canvasRef}
-      width={1280}
-      height={960}
-      style={{border:"1px solid black"}}
-    />
+              {/* Right Column: Inputs & Camera */}
+              <div style={{ flex: 1.2, display: "flex", flexDirection: "column", gap: "25px" }}>
+                <div style={{ position: "relative", textAlign: "left" }}>
+                  <div style={{ 
+                    position: "absolute", 
+                    top: "-10px", 
+                    left: "12px", 
+                    backgroundColor: "#20212b", 
+                    padding: "0 5px", 
+                    fontSize: "12px", 
+                    color: "#4ade80",
+                    zIndex: 1
+                  }}>
+                    Name
+                  </div>
+                  <input 
+                    type="text" 
+                    value={userName}
+                    onChange={(e) => setUserName(e.target.value)}
+                    placeholder="Enter your name..."
+                    style={{ 
+                      width: "100%", 
+                      backgroundColor: "transparent", 
+                      border: "1px solid #4ade80", 
+                      borderRadius: "8px", 
+                      padding: "14px 15px", 
+                      color: "white",
+                      outline: "none",
+                      fontSize: "15px"
+                    }} 
+                  />
+                </div>
 
+                <div style={{ position: "relative", textAlign: "left" }}>
+                  <div style={{ 
+                    position: "absolute", 
+                    top: "-10px", 
+                    left: "12px", 
+                    backgroundColor: "#20212b", 
+                    padding: "0 5px", 
+                    fontSize: "12px", 
+                    color: "#4ade80",
+                    zIndex: 1
+                  }}>
+                    Student ID (MSSV)
+                  </div>
+                  <input 
+                    type="text" 
+                    value={studentId}
+                    onChange={(e) => setStudentId(e.target.value)}
+                    placeholder="Enter MSSV..."
+                    style={{ 
+                      width: "100%", 
+                      backgroundColor: "transparent", 
+                      border: "1px solid #4ade80", 
+                      borderRadius: "8px", 
+                      padding: "14px 15px", 
+                      color: "white",
+                      outline: "none",
+                      fontSize: "15px"
+                    }} 
+                  />
+                </div>
+
+                {/* Video Placeholder Box */}
+                <div style={{ 
+                  backgroundColor: "#000", 
+                  borderRadius: "12px", 
+                  height: "160px", 
+                  display: "flex", 
+                  alignItems: "center", 
+                  justifyContent: "center",
+                  border: "1px solid #333",
+                  position: "relative",
+                  overflow: "hidden"
+                }}>
+                  <div style={{ color: "#555", fontSize: "13px" }}>Camera is off</div>
+                  <div style={{ 
+                    position: "absolute", 
+                    bottom: "15px", 
+                    width: "100%", 
+                    display: "flex", 
+                    justifyContent: "center", 
+                    gap: "25px" 
+                  }}>
+                    <span style={{ cursor: "pointer", fontSize: "20px", opacity: 0.6 }}>📹</span>
+                    <span style={{ cursor: "pointer", fontSize: "20px", opacity: 0.6 }}>🎤</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <button 
+              onClick={() => {
+                if (userName.trim() && studentId.trim()) {
+                  setIsJoined(true)
+                } else {
+                  alert("Vui lòng nhập đầy đủ Tên và MSSV!")
+                }
+              }}
+              style={{
+                backgroundColor: "#4ade80",
+                color: "#1a1b26",
+                border: "none",
+                borderRadius: "8px",
+                padding: "12px 60px",
+                fontSize: "16px",
+                fontWeight: "600",
+                cursor: "pointer",
+                transition: "all 0.2s"
+              }}
+              onMouseOver={(e) => e.currentTarget.style.filter = "brightness(1.1)"}
+              onMouseOut={(e) => e.currentTarget.style.filter = "none"}
+            >
+              Join
+            </button>
+          </div>
+        </div>
+      )}
+
+      <canvas
+        ref={canvasRef}
+        width={1280}
+        height={960}
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: "contain",
+          display: "block",
+          backgroundColor: "#1a1b26",
+          outline: "none"
+        }}
+      />
+    </div>
   )
-
 }
