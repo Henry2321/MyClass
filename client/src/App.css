@@ -443,6 +443,25 @@
   font-weight: 500;
 }
 
+/* OVERRIDE FOR COLORED CARDS */
+.stat-card.blue, .stat-card.green, .stat-card.orange, .stat-card.purple {
+  background: var(--card-color);
+  color: white !important;
+}
+
+.stat-card.blue h3, .stat-card.green h3, .stat-card.orange h3, .stat-card.purple h3 {
+  color: white !important;
+}
+
+.stat-card.blue p, .stat-card.green p, .stat-card.orange p, .stat-card.purple p {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+.stat-card.blue .stat-icon, .stat-card.green .stat-icon, .stat-card.orange .stat-icon, .stat-card.purple .stat-icon {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
 .trend {
   font-size: 12px;
   font-weight: 600;

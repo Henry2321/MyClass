@@ -1,12 +1,115 @@
 import { useEffect, useRef, useState } from "react"
+import { useSocket } from "../contexts/SocketContext"
+import { useVoice } from "../contexts/VoiceContext"
 
 export default function ClassCanvas() {
-
+  const { socket } = useSocket()
+  // @ts-ignore
+  const { peer, myStream, setMyStream, isPushingToTalk, setIsPushingToTalk, remoteStreams, makeCall } = useVoice()
   const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  // Sử dụng useRef cho PTT để tránh stale closure trong game loop
+  const isTalkingRef = useRef(false)
+  useEffect(() => {
+    isTalkingRef.current = isPushingToTalk
+  }, [isPushingToTalk])
   const [isJoined, setIsJoined] = useState(false)
   const [userName, setUserName] = useState("")
   const [studentId, setStudentId] = useState("")
   const [selectedCharIndex, setSelectedCharIndex] = useState(0)
+
+  // Media state cho cam/mic preview
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null)
+  const [isCamOn, setIsCamOn] = useState(false)
+  const [isMicOn, setIsMicOn] = useState(false)
+  const videoPreviewRef = useRef<HTMLVideoElement>(null)
+
+  // Tự động đồng bộ localStream vào VoiceContext khi có thay đổi (sau khi đã Join)
+  useEffect(() => {
+    if (isJoined) {
+      setMyStream(localStream);
+      
+      // Nếu vừa bật Mic, hãy thực hiện cuộc gọi lại cho tất cả người chơi khác 
+      // để đảm bảo họ nghe thấy mình
+      if (localStream && (isMicOn || isCamOn) && peer) {
+        remotePlayers.current.forEach(p => {
+          if (p.peerId) {
+            makeCall(p.peerId, localStream);
+          }
+        });
+      }
+    }
+  }, [localStream, isJoined, isMicOn, isCamOn, peer]);
+
+  // useEffect để gán stream vào video element mỗi khi stream hoặc trạng thái cam thay đổi
+  useEffect(() => {
+    if (isCamOn && localStream && videoPreviewRef.current) {
+      videoPreviewRef.current.srcObject = localStream;
+    }
+  }, [isCamOn, localStream]);
+
+  const toggleCamera = async () => {
+    try {
+      if (isCamOn) {
+        localStream?.getVideoTracks().forEach(track => track.stop())
+        if (!isMicOn) {
+          localStream?.getTracks().forEach(track => track.stop())
+          setLocalStream(null)
+        }
+        setIsCamOn(false)
+      } else {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { width: 1280, height: 720 }, 
+          audio: isMicOn 
+        })
+        
+        if (localStream) {
+          // Nếu đã có mic, thêm track video vào stream hiện tại
+          stream.getVideoTracks().forEach(track => localStream.addTrack(track))
+          // Quan trọng: Phải gán lại để trigger useEffect
+          setLocalStream(new MediaStream(localStream.getTracks()))
+        } else {
+          setLocalStream(stream)
+        }
+        setIsCamOn(true)
+      }
+    } catch (err) {
+      console.error("Lỗi bật camera:", err)
+      alert("Không thể truy cập camera! Vui lòng kiểm tra quyền truy cập hoặc thiết bị.")
+    }
+  }
+
+  const toggleMic = async () => {
+    try {
+      if (isMicOn) {
+        localStream?.getAudioTracks().forEach(track => {
+          track.stop();
+          localStream.removeTrack(track);
+        })
+        if (!isCamOn) {
+          localStream?.getTracks().forEach(track => track.stop())
+          setLocalStream(null)
+        }
+        setIsMicOn(false)
+      } else {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          audio: true, 
+          video: false 
+        })
+        
+        if (localStream) {
+          stream.getAudioTracks().forEach(track => localStream.addTrack(track))
+          setLocalStream(new MediaStream(localStream.getTracks()))
+        } else {
+          setLocalStream(stream)
+        }
+        setIsMicOn(true)
+      }
+    } catch (err) {
+      console.error("Lỗi bật mic:", err)
+      alert("Không thể truy cập microphone!")
+    }
+  }
 
   const characters = ["adam", "ash", "lucy", "nancy"]
   
@@ -26,8 +129,71 @@ export default function ClassCanvas() {
   const frameX = useRef(0)
   const frameTimer = useRef(0)
 
+  // Multiplayer: Lưu trữ danh sách người chơi khác
+  const remotePlayers = useRef<Map<string, any>>(new Map())
+  const remotePlayerImages = useRef<Map<string, HTMLImageElement>>(new Map())
+
   useEffect(() => {
-    if (!isJoined) return // Không chạy game loop nếu chưa join
+    if (!isJoined || !socket) return // Không chạy game loop nếu chưa join hoặc chưa có socket
+
+    // Join classroom via socket
+    socket.emit('join_classroom', {
+      classId: 'main-class', // Hardcoded classId for now
+      user: {
+        id: studentId,
+        name: userName,
+        avatar: characters[selectedCharIndex],
+        peerId: `peer-${socket.id}`
+      }
+    })
+
+    socket.on('current_players', (players: any[]) => {
+      players.forEach(p => {
+        if (p.id !== socket.id) {
+          remotePlayers.current.set(p.id, p)
+          if (!remotePlayerImages.current.has(p.avatar)) {
+            const img = new Image()
+            img.src = `/sprites/${p.avatar}.png`
+            remotePlayerImages.current.set(p.avatar, img)
+          }
+
+          // Thử gọi người chơi cũ sau một khoảng trễ ngắn để đảm bảo Peer đã ổn định
+          setTimeout(() => {
+            if (peer && myStream && p.peerId) {
+              makeCall(p.peerId, myStream)
+            }
+          }, 1500)
+        }
+      })
+    })
+
+    socket.on('player_joined', (p: any) => {
+      remotePlayers.current.set(p.id, p)
+      if (!remotePlayerImages.current.has(p.avatar)) {
+        const img = new Image()
+        img.src = `/sprites/${p.avatar}.png`
+        remotePlayerImages.current.set(p.avatar, img)
+      }
+
+      // Tự động gọi người chơi mới gia nhập
+      setTimeout(() => {
+        if (peer && myStream && p.peerId) {
+          makeCall(p.peerId, myStream)
+        }
+      }, 1000)
+    })
+
+    socket.on('player_moved', (p: any) => {
+      if (remotePlayers.current.has(p.id)) {
+        // Cập nhật mọi thông tin bao gồm cả isTalking
+        const existing = remotePlayers.current.get(p.id)
+        remotePlayers.current.set(p.id, { ...existing, ...p })
+      }
+    })
+
+    socket.on('player_left', (id: string) => {
+      remotePlayers.current.delete(id)
+    })
 
     const canvas = canvasRef.current!
     const ctx = canvas.getContext("2d")!
@@ -72,14 +238,15 @@ export default function ClassCanvas() {
     playerImg.src=`/sprites/${characters[selectedCharIndex]}.png`
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Bắt cả key và code để tăng độ chính xác
       const key = e.key.toLowerCase()
       const code = e.code.toLowerCase()
       
       keys.current.add(key)
       keys.current.add(code)
       
-      if (["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d", "h"].includes(key) || 
-          ["keyw", "keya", "keys", "keyd"].includes(code)) {
+      // Chỉ chặn scroll trang nếu đang tập trung vào Canvas
+      if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(key) || ["arrowup", "arrowdown", "arrowleft", "arrowright", "space"].includes(code)) {
         e.preventDefault()
       }
 
@@ -94,20 +261,43 @@ export default function ClassCanvas() {
           player.current.y = seatPos.current.y - 12
         }
       }
+
+      // Push to Talk: Giữ G để nói
+      if (key === "g" || code === "keyg") {
+        if (!isTalkingRef.current) {
+          console.log("PTT ON");
+          setIsPushingToTalk(true);
+        }
+      }
     }
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      keys.current.delete(e.key.toLowerCase())
-      keys.current.delete(e.code.toLowerCase())
+      const key = e.key.toLowerCase()
+      const code = e.code.toLowerCase()
+
+      keys.current.delete(key)
+      keys.current.delete(code)
+
+      if (key === "g" || code === "keyg") {
+        console.log("PTT OFF");
+        setIsPushingToTalk(false)
+      }
     }
 
     const handleBlur = () => {
       keys.current.clear()
     }
 
-    window.addEventListener("keydown", handleKeyDown, { capture: true })
-    window.addEventListener("keyup", handleKeyUp, { capture: true })
-    window.addEventListener("blur", handleBlur)
+    // TÁCH BIỆT HOÀN TOÀN: Đưa sự kiện về Canvas thay vì Window
+    canvas.addEventListener("keydown", handleKeyDown)
+    canvas.addEventListener("keyup", handleKeyUp)
+    canvas.addEventListener("blur", handleBlur)
+    
+    // Tự động focus vào canvas khi người dùng click vào vùng game
+    const handleCanvasClick = () => {
+      canvas.focus()
+    }
+    canvas.addEventListener("click", handleCanvasClick)
 
     function update(){
       // Kiểm tra vị trí ngồi
@@ -263,6 +453,11 @@ export default function ClassCanvas() {
 
       drawPlayer()
 
+      // Vẽ các người chơi khác
+      remotePlayers.current.forEach(p => {
+        drawRemotePlayer(p)
+      })
+
       for(const layer of mapData.layers){
         const name = (layer as any).name
         if (name === "cảnh vật" || name === "c\u1ea3nh v\u1eadt") {
@@ -340,35 +535,69 @@ export default function ClassCanvas() {
         frameHeight
       )
 
-      // Vẽ tên trên đầu nhân vật
-      if (userName) {
-        ctx.font = "bold 12px Arial"
-        const textWidth = ctx.measureText(userName).width
-        
-        // Vẽ nền cho tên (giúp dễ đọc hơn)
-        ctx.beginPath() // Thêm beginPath để tránh để lại vệt đen khi di chuyển
-        ctx.fillStyle = "rgba(0, 0, 0, 0.5)"
-        ctx.roundRect(
-          player.current.x + (frameWidth / 2) - (textWidth / 2) - 5, 
-          player.current.y - 20, 
-          textWidth + 10, 
-          16, 
-          4
-        )
-        ctx.fill()
-        ctx.closePath()
+      // Vẽ tên trên đầu nhân vật - SỬ DỤNG isTalkingRef để đảm bảo UI đồng bộ
+      drawNameTag(userName, player.current.x, player.current.y, frameWidth, isTalkingRef.current)
+    }
 
-        // Vẽ chữ tên
-        ctx.fillStyle = "white"
-        ctx.textAlign = "center"
-        ctx.fillText(
-          userName, 
-          player.current.x + (frameWidth / 2), 
-          player.current.y - 8
-        )
-        // Reset textAlign về mặc định cho các phần vẽ khác
-        ctx.textAlign = "start"
+    function drawRemotePlayer(p: any) {
+      const img = remotePlayerImages.current.get(p.avatar)
+      if (!img || !img.complete) return
+
+      const frameWidth = 32
+      const frameHeight = 48
+      let actualFrameX = 0
+
+      // Hướng quay giống local player
+      if (p.isMoving) {
+        const runStarts = [24, 42, 30, 36]
+        actualFrameX = runStarts[p.direction] + p.frame
+      } else {
+        const idleStarts = [0, 18, 6, 12]
+        actualFrameX = idleStarts[p.direction] + p.frame
       }
+
+      if (actualFrameX >= 52) actualFrameX = 0
+
+      ctx.drawImage(
+        img,
+        actualFrameX * frameWidth,
+        0,
+        frameWidth,
+        frameHeight,
+        p.x,
+        p.y,
+        frameWidth,
+        frameHeight
+      )
+
+      drawNameTag(p.name, p.x, p.y, frameWidth, p.isTalking)
+    }
+
+    function drawNameTag(name: string, x: number, y: number, frameWidth: number, isTalking?: boolean) {
+      if (!name) return
+      ctx.font = "bold 12px Arial"
+      const textWidth = ctx.measureText(name).width
+      
+      ctx.beginPath()
+      ctx.fillStyle = isTalking ? "rgba(74, 222, 128, 0.8)" : "rgba(0, 0, 0, 0.5)"
+      ctx.roundRect(
+        x + (frameWidth / 2) - (textWidth / 2) - 5, 
+        y - 20, 
+        textWidth + 10, 
+        16, 
+        4
+      )
+      ctx.fill()
+      ctx.closePath()
+
+      ctx.fillStyle = "white"
+      ctx.textAlign = "center"
+      ctx.fillText(
+        (isTalking ? "🎤 " : "") + name, 
+        x + (frameWidth / 2), 
+        y - 8
+      )
+      ctx.textAlign = "start"
     }
 
     function drawUI(){
@@ -383,9 +612,27 @@ export default function ClassCanvas() {
 
     let animationId: number
 
+    let lastEmitTime = 0
+
     function loop(){
       ctx.clearRect(0,0,canvas.width,canvas.height)
       update()
+
+      // Gửi vị trí cho server (throttle 30ms)
+      const now = Date.now()
+      if (now - lastEmitTime > 30) {
+        socket.emit('move', {
+          classId: 'main-class',
+          x: player.current.x,
+          y: player.current.y,
+          frame: frameX.current,
+          direction: currentDir.current,
+          isMoving: isMoving.current,
+          isTalking: isTalkingRef.current
+        })
+        lastEmitTime = now
+      }
+
       drawMap()
       drawUI()
       animationId = requestAnimationFrame(loop)
@@ -406,13 +653,18 @@ export default function ClassCanvas() {
     }, 1000)
 
     return () => {
-      window.removeEventListener("keydown", handleKeyDown, { capture: true })
-      window.removeEventListener("keyup", handleKeyUp, { capture: true })
-      window.removeEventListener("blur", handleBlur)
+      canvas.removeEventListener("keydown", handleKeyDown)
+      canvas.removeEventListener("keyup", handleKeyUp)
+      canvas.removeEventListener("blur", handleBlur)
+      canvas.removeEventListener("click", handleCanvasClick)
       cancelAnimationFrame(animationId)
+      socket.off('current_players')
+      socket.off('player_joined')
+      socket.off('player_moved')
+      socket.off('player_left')
     }
 
-  }, [isJoined]) // Chạy lại useEffect khi isJoined thay đổi
+  }, [isJoined, socket]) // Chạy lại useEffect khi isJoined hoặc socket thay đổi
 
   return(
     <div style={{ position: "relative", width: "100%", height: "100%", backgroundColor: "#1a1b26" }}>
@@ -569,7 +821,7 @@ export default function ClassCanvas() {
                   />
                 </div>
 
-                {/* Video Placeholder Box */}
+                {/* Video Preview Box */}
                 <div style={{ 
                   backgroundColor: "#000", 
                   borderRadius: "12px", 
@@ -581,28 +833,80 @@ export default function ClassCanvas() {
                   position: "relative",
                   overflow: "hidden"
                 }}>
-                  <div style={{ color: "#555", fontSize: "13px" }}>Camera is off</div>
+                  {isCamOn ? (
+                    <video 
+                      ref={videoPreviewRef} 
+                      autoPlay 
+                      muted 
+                      playsInline 
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }} 
+                    />
+                  ) : (
+                    <div style={{ color: "#555", fontSize: "13px" }}>Camera is off</div>
+                  )}
+                  
                   <div style={{ 
                     position: "absolute", 
                     bottom: "15px", 
                     width: "100%", 
                     display: "flex", 
                     justifyContent: "center", 
-                    gap: "25px" 
+                    gap: "25px",
+                    zIndex: 2
                   }}>
-                    <span style={{ cursor: "pointer", fontSize: "20px", opacity: 0.6 }}>📹</span>
-                    <span style={{ cursor: "pointer", fontSize: "20px", opacity: 0.6 }}>🎤</span>
+                    <span 
+                      onClick={toggleCamera}
+                      style={{ 
+                        cursor: "pointer", 
+                        fontSize: "20px", 
+                        opacity: isCamOn ? 1 : 0.6,
+                        filter: isCamOn ? "none" : "grayscale(100%)"
+                      }}
+                    >
+                      📹
+                    </span>
+                    <span 
+                      onClick={toggleMic}
+                      style={{ 
+                        cursor: "pointer", 
+                        fontSize: "20px", 
+                        opacity: isMicOn ? 1 : 0.6,
+                        filter: isMicOn ? "none" : "grayscale(100%)"
+                      }}
+                    >
+                      🎤
+                    </span>
                   </div>
                 </div>
               </div>
             </div>
 
             <button 
-              onClick={() => {
+              onClick={async () => {
                 if (userName.trim() && studentId.trim()) {
-                  setIsJoined(true)
+                  // Tự động bật Mic khi Join nếu chưa bật
+                  if (!isMicOn) {
+                    try {
+                      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: isCamOn });
+                      if (localStream) {
+                        stream.getAudioTracks().forEach(track => localStream.addTrack(track));
+                        const newStream = new MediaStream(localStream.getTracks());
+                        setLocalStream(newStream);
+                        setMyStream(newStream);
+                      } else {
+                        setLocalStream(stream);
+                        setMyStream(stream);
+                      }
+                      setIsMicOn(true);
+                    } catch (err) {
+                      console.error("Auto mic activation failed:", err);
+                    }
+                  } else {
+                    setMyStream(localStream);
+                  }
+                  setIsJoined(true);
                 } else {
-                  alert("Vui lòng nhập đầy đủ Tên và MSSV!")
+                  alert("Vui lòng nhập đầy đủ Tên và MSSV!");
                 }
               }}
               style={{

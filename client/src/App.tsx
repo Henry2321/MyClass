@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { SocketProvider } from "./contexts/SocketContext";
+import { VoiceProvider } from "./contexts/VoiceContext";
 
 import Sidebar from "./components/Sidebar";
 import Dashboard from "./components/Dashboard";
@@ -9,6 +11,13 @@ import Assignments from "./components/Assignments";
 import Students from "./components/Students";
 import Settings from "./components/Settings";
 import RightPanel from "./components/RightPanel";
+
+// Dashboard Sub-pages
+import SubmittedAssignments from "./components/dashboard-pages/SubmittedAssignments";
+import Deadlines from "./components/dashboard-pages/Deadlines";
+import Grades from "./components/dashboard-pages/Grades";
+import Messages from "./components/dashboard-pages/Messages";
+import Schedule from "./components/dashboard-pages/Schedule";
 
 import Login from "./components/Login";
 import Register from "./components/Register";
@@ -30,7 +39,7 @@ function MainApp() {
     switch (activeTab) {
 
       case "dashboard":
-        return <Dashboard />;
+        return <Dashboard onTabChange={setActiveTab} />;
 
       case "classes":
         return <Classes />;
@@ -51,8 +60,24 @@ function MainApp() {
       case "classroom":
         return <ClassroomView />;
 
+      // ⭐ TRANG DASHBOARD PHỤ
+      case "submitted-assignments":
+        return <SubmittedAssignments />;
+
+      case "deadlines":
+        return <Deadlines />;
+
+      case "grades":
+        return <Grades />;
+
+      case "messages":
+        return <Messages />;
+
+      case "schedule":
+        return <Schedule />;
+
       default:
-        return <Dashboard />;
+        return <Dashboard onTabChange={setActiveTab} />;
     }
 
   };
@@ -114,9 +139,11 @@ export default function App() {
   return (
 
     <AuthProvider>
-
-      <MainApp />
-
+      <SocketProvider>
+        <VoiceProvider>
+          <MainApp />
+        </VoiceProvider>
+      </SocketProvider>
     </AuthProvider>
 
   );

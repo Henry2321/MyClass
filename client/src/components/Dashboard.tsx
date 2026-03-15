@@ -25,7 +25,7 @@ interface Activity {
   type: 'submission' | 'class' | 'deadline' | 'grade';
 }
 
-export default function Dashboard() {
+export default function Dashboard({ onTabChange }: { onTabChange: (tab: string) => void }) {
   const { user } = useAuth();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [selectedPeriod, setSelectedPeriod] = useState('today');
@@ -130,25 +130,25 @@ export default function Dashboard() {
         setShowCreateLessonModal(true);
         break;
       case 'settings':
-        setShowSettingsModal(true);
+        onTabChange('settings');
         break;
       case 'submitted-assignments':
-        alert('Chức năng xem bài đã nộp đang được phát triển');
+        onTabChange('submitted-assignments');
         break;
       case 'upcoming-deadlines':
-        alert('Chức năng xem deadline đang được phát triển');
+        onTabChange('deadlines');
         break;
       case 'access-lectures':
-        alert('Chức năng truy cập bài giảng đang được phát triển');
+        onTabChange('lectures');
         break;
       case 'view-grades':
-        alert('Chức năng xem điểm số đang được phát triển');
+        onTabChange('grades');
         break;
       case 'message-teacher':
-        alert('Chức năng tin nhắn với GV đang được phát triển');
+        onTabChange('messages');
         break;
       case 'schedule':
-        alert('Chức năng lịch học đang được phát triển');
+        onTabChange('schedule');
         break;
     }
   };

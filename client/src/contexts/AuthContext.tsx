@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { API_BASE_URL } from '../utils/api';
 
 interface User {
   id: string;
@@ -54,7 +55,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
   const verifyToken = async (token: string, userData: User) => {
     try {
-      const response = await fetch('http://localhost:5000/api/auth/me', {
+      const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
