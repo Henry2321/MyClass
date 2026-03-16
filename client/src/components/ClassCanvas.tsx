@@ -1285,6 +1285,107 @@ export default function ClassCanvas() {
         </div>
       )}
 
+      {/* Media Controls - Hiển thị khi đã join */}
+      {isJoined && (
+        <div style={{
+          position: "fixed",
+          bottom: "20px",
+          left: "20px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "10px",
+          zIndex: 1000
+        }}>
+          {/* Media Control Buttons - Đặt bên trên camera */}
+          <div style={{
+            display: "flex",
+            gap: "10px",
+            justifyContent: "center"
+          }}>
+            <button
+              onClick={toggleCamera}
+              style={{
+                width: "45px",
+                height: "45px",
+                borderRadius: "50%",
+                border: "none",
+                backgroundColor: isCamOn ? "#4ade80" : "#ef4444",
+                color: "white",
+                fontSize: "20px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "all 0.2s",
+                boxShadow: "0 4px 12px rgba(0,0,0,0.3)"
+              }}
+              title={isCamOn ? "Tắt camera" : "Bật camera"}
+              onMouseOver={(e) => e.currentTarget.style.transform = "scale(1.1)"}
+              onMouseOut={(e) => e.currentTarget.style.transform = "scale(1)"}
+            >
+              📹
+            </button>
+            
+            <button
+              onClick={toggleMic}
+              style={{
+                width: "45px",
+                height: "45px",
+                borderRadius: "50%",
+                border: "none",
+                backgroundColor: isMicOn ? "#4ade80" : "#ef4444",
+                color: "white",
+                fontSize: "20px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "all 0.2s",
+                boxShadow: "0 4px 12px rgba(0,0,0,0.3)"
+              }}
+              title={isMicOn ? "Tắt microphone" : "Bật microphone"}
+              onMouseOver={(e) => e.currentTarget.style.transform = "scale(1.1)"}
+              onMouseOut={(e) => e.currentTarget.style.transform = "scale(1)"}
+            >
+              🎤
+            </button>
+          </div>
+          
+          {/* Camera Preview */}
+          <div style={{
+            width: "200px",
+            height: "150px",
+            backgroundColor: "#000",
+            borderRadius: "12px",
+            border: "2px solid #4ade80",
+            position: "relative",
+            overflow: "hidden"
+          }}>
+            {isCamOn ? (
+              <video 
+                ref={videoPreviewRef} 
+                autoPlay 
+                muted 
+                playsInline 
+                style={{ width: "100%", height: "100%", objectFit: "cover" }} 
+              />
+            ) : (
+              <div style={{ 
+                width: "100%", 
+                height: "100%", 
+                display: "flex", 
+                alignItems: "center", 
+                justifyContent: "center",
+                color: "#666",
+                fontSize: "14px"
+              }}>
+                Camera tắt
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Classroom Chat */}
       <ClassroomChat 
         isVisible={isChatVisible} 
