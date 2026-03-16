@@ -1,6 +1,11 @@
+// Tự động lấy hostname từ trình duyệt để hỗ trợ truy cập qua mạng nội bộ (LAN)
+export const API_BASE_URL = `http://${window.location.hostname}:5000`;
+
 // API utility để xử lý token và lỗi
 export const apiCall = async (url: string, options: RequestInit = {}) => {
   const token = localStorage.getItem('token');
+  
+  const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
   
   const defaultHeaders = {
     'Content-Type': 'application/json',
@@ -16,7 +21,7 @@ export const apiCall = async (url: string, options: RequestInit = {}) => {
   };
 
   try {
-    const response = await fetch(url, config);
+    const response = await fetch(fullUrl, config);
     
     // Nếu token không hợp lệ, xóa và redirect về login
     if (response.status === 401) {

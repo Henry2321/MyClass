@@ -6,20 +6,33 @@ const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const http = require('http');
 const socketIo = require('socket.io');
+const { ExpressPeerServer } = require('peer');
 const { errorHandler, notFound } = require('./middleware/errorHandler');
 require('dotenv').config();
 
 const app = express();
 const server = http.createServer(app);
+
+// PeerJS Server
+const peerServer = ExpressPeerServer(server, {
+  debug: true,
+  path: '/peerjs'
+});
+app.use(peerServer);
+
 const io = socketIo(server, {
   cors: {
-    origin: process.env.NODE_ENV === 'production' ? process.env.CLIENT_URL : "http://localhost:5173",
-    methods: ["GET", "POST"]
+    // Cho phép tất cả origin trong môi trường dev để hỗ trợ truy cập LAN
+    origin: process.env.NODE_ENV === 'production' ? process.env.CLIENT_URL : true,
+    methods: ["GET", "POST"],
+    credentials: true
   }
 });
 
 // Security middleware
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: false, // Disable CSP in dev to avoid blocking WebRTC/PeerJS
+}));
 app.use(compression());
 
 // Rate limiting
@@ -32,7 +45,8 @@ app.use('/api/', limiter);
 
 // CORS configuration
 const corsOptions = {
-  origin: process.env.NODE_ENV === 'production' ? process.env.CLIENT_URL : "http://localhost:5173",
+  // Cho phép tất cả origin trong môi trường dev để hỗ trợ truy cập LAN
+  origin: process.env.NODE_ENV === 'production' ? process.env.CLIENT_URL : true,
   credentials: true
 };
 app.use(cors(corsOptions));
@@ -64,6 +78,8 @@ app.use(notFound);
 app.use(errorHandler);
 
 // Socket.io
+const rooms = new Map(); // classId -> Map(socketId -> playerData)
+
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
   
@@ -73,24 +89,77 @@ io.on('connection', (socket) => {
     console.log(`User ${userId} joined room`);
   });
   
-  // Handle real-time class updates
-  socket.on('join_class', (classId) => {
+  // Handle classroom movement
+  socket.on('join_classroom', ({ classId, user }) => {
     socket.join(`class_${classId}`);
-    console.log(`User joined class room: ${classId}`);
+    
+    if (!rooms.has(classId)) {
+      rooms.set(classId, new Map());
+    }
+    
+    const playerData = {
+      id: socket.id,
+      userId: user.id,
+      name: user.name,
+      avatar: user.avatar || 'adam',
+      peerId: user.peerId, // Lưu Peer ID để WebRTC có thể gọi
+      x: 400,
+      y: 400,
+      frame: 0,
+      direction: 0,
+      isMoving: false,
+      isTalking: false // Trạng thái Mic mặc định
+    };
+    
+    rooms.get(classId).set(socket.id, playerData);
+    
+    // Send current players in room to the new player
+    const playersInRoom = Array.from(rooms.get(classId).values());
+    socket.emit('current_players', playersInRoom);
+    
+    // Notify others about new player
+    socket.to(`class_${classId}`).emit('player_joined', playerData);
+    
+    console.log(`User ${user.name} joined classroom: ${classId}`);
+  });
+
+  socket.on('move', ({ classId, x, y, frame, direction, isMoving, isTalking }) => {
+    const room = rooms.get(classId);
+    if (room && room.has(socket.id)) {
+      const playerData = room.get(socket.id);
+      playerData.x = x;
+      playerData.y = y;
+      playerData.frame = frame;
+      playerData.direction = direction;
+      playerData.isMoving = isMoving;
+      playerData.isTalking = isTalking; // Cập nhật trạng thái nói cho các máy khác thấy icon
+      
+      // Broadcast movement to others in the room
+      socket.to(`class_${classId}`).emit('player_moved', playerData);
+    }
+  });
+
+  socket.on('send_message', ({ classId, message }) => {
+    // Broadcast message to everyone in the room (including sender if needed, but usually handled by client)
+    io.to(`class_${classId}`).emit('new_message', message);
   });
   
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
+    // Find and remove player from any room
+    rooms.forEach((players, classId) => {
+      if (players.has(socket.id)) {
+        players.delete(socket.id);
+        io.to(`class_${classId}`).emit('player_left', socket.id);
+      }
+    });
   });
 });
 
 // MongoDB connection with retry logic
 const connectDB = async () => {
   try {
-    const conn = await mongoose.connect(process.env.MONGODB_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
+    const conn = await mongoose.connect(process.env.MONGODB_URI);
     console.log(`MongoDB Connected: ${conn.connection.host}`);
   } catch (error) {
     console.error('Database connection failed:', error);
