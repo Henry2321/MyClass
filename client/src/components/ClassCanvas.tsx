@@ -1,18 +1,33 @@
 import { useEffect, useRef, useState } from "react"
+import { useAuth } from '../contexts/AuthContext'
+
+interface ScreenShareState {
+  isSharing: boolean
+  sharerName: string
+  sharerRole: 'teacher' | 'student'
+  stream: MediaStream | null
+}
 
 export default function ClassCanvas() {
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [isJoined, setIsJoined] = useState(false)
   const [userName, setUserName] = useState("")
-  const [studentId, setStudentId] = useState("")
+  const { user } = useAuth()
   const [selectedCharIndex, setSelectedCharIndex] = useState(0)
+
+  const [screenShare, setScreenShare] = useState<ScreenShareState>({
+    isSharing: false,
+    sharerName: '',
+    sharerRole: 'student',
+    stream: null
+  })
 
   const characters = ["adam", "ash", "lucy", "nancy"]
   
   const player = useRef({
-    x: 400,
-    y: 400,
+    x: 104,
+    y: 600,
     speed: 3
   })
 
@@ -76,10 +91,16 @@ export default function ClassCanvas() {
           player.current.y += 16
         } else if (canSit.current) {
           isSitting.current = true
-          currentDir.current = 1 
+          // Giữ nguyên hướng đã xác định trong update()
           player.current.x = seatPos.current.x
-          player.current.y = seatPos.current.y - 12
+          player.current.y = seatPos.current.y
         }
+      }
+
+      // Phím S để share màn hình khi đang ngồi
+      if ((key === "s" || code === "keys") && !e.repeat && isSitting.current) {
+        e.preventDefault()
+        handleScreenShare()
       }
     }
 
@@ -96,6 +117,66 @@ export default function ClassCanvas() {
     window.addEventListener("keyup", handleKeyUp, { capture: true })
     window.addEventListener("blur", handleBlur)
 
+    // Screen sharing functions
+    const handleScreenShare = async () => {
+      try {
+        // Kiểm tra nếu giáo viên đang share thì học sinh không được share
+        if (screenShare.isSharing && screenShare.sharerRole === 'teacher' && user?.role === 'student') {
+          alert('Giáo viên đang trình chiếu. Bạn không thể share màn hình!')
+          return
+        }
+
+        // Kiểm tra nếu ai đó khác đang share (trừ giáo viên)
+        if (screenShare.isSharing && screenShare.sharerName !== userName) {
+          if (user?.role === 'teacher') {
+            // Giáo viên có thể gạt share của học sinh
+            stopScreenShare()
+          } else {
+            alert(`${screenShare.sharerName} đang trình chiếu. Vui lòng chờ!`)
+            return
+          }
+        }
+
+        if (screenShare.isSharing && screenShare.sharerName === userName) {
+          // Dừng share
+          stopScreenShare()
+        } else {
+          // Bắt đầu share
+          const stream = await navigator.mediaDevices.getDisplayMedia({
+            video: true,
+            audio: true
+          })
+
+          setScreenShare({
+            isSharing: true,
+            sharerName: userName,
+            sharerRole: user?.role || 'student',
+            stream: stream
+          })
+
+          // Lắng nghe khi user dừng share từ browser
+          stream.getVideoTracks()[0].onended = () => {
+            stopScreenShare()
+          }
+        }
+      } catch (error) {
+        console.error('Lỗi khi share màn hình:', error)
+        alert('Không thể share màn hình. Vui lòng thử lại!')
+      }
+    }
+
+    const stopScreenShare = () => {
+      if (screenShare.stream) {
+        screenShare.stream.getTracks().forEach(track => track.stop())
+      }
+      setScreenShare({
+        isSharing: false,
+        sharerName: '',
+        sharerRole: 'student',
+        stream: null
+      })
+    }
+
     function update(){
       canSit.current = false
       if (mapData) {
@@ -103,15 +184,55 @@ export default function ClassCanvas() {
         const ty = Math.floor((player.current.y + 40) / tileSize)
 
         if (tx >= 0 && tx < mapData.width && ty >= 0 && ty < mapData.height) {
-          const index = ty * mapData.width + tx
+          // Debug: Luôn hiển thị thông tin vị trí hiện tại
+          const currentIndex = ty * mapData.width + tx
+          
+          // Kiểm tra tất cả các layer tại vị trí hiện tại
+          console.log(`Player position: (${tx}, ${ty})`);
           for (const layer of mapData.layers) {
-            const name = (layer as any).name
-            if (name === "Class" || name === "Objects" || name === "cảnh vật" || name === "cảnh vật") {
-              if (layer.data[index] !== 0) {
-                canSit.current = true
-                seatPos.current = { x: tx * tileSize, y: ty * tileSize }
-                break
+            const layerName = (layer as any).name
+            const tile = layer.data[currentIndex]
+            if (tile !== 0) {
+              console.log(`Layer "${layerName}" has tile: ${tile}`);
+            }
+          }
+          
+          // Chỉ kiểm tra ghế khi không đang ngồi
+          if (!isSitting.current) {
+            // Kiểm tra xung quanh có bàn học không (bán kính 3 ô)
+            for (let dy = -3; dy <= 3; dy++) {
+              for (let dx = -3; dx <= 3; dx++) {
+                if (dx === 0 && dy === 0) continue // Bỏ qua vị trí hiện tại
+                
+                const checkTx = tx + dx
+                const checkTy = ty + dy
+                
+                if (checkTx >= 0 && checkTx < mapData.width && checkTy >= 0 && checkTy < mapData.height) {
+                  const checkIndex = checkTy * mapData.width + checkTx
+                  
+                  // Kiểm tra layer "Class" cho bàn học
+                  for (const layer of mapData.layers) {
+                    if ((layer as any).name === "Class") {
+                      const deskTile = layer.data[checkIndex]
+                      // Mở rộng range để bao gồm các tile bàn học khác
+                      if ((deskTile >= 4423 && deskTile <= 4457) || 
+                          (deskTile >= 3900 && deskTile <= 4000) || 
+                          deskTile === 3948) { // Bàn học
+                        canSit.current = true
+                        
+                        // Xác định hướng ngồi - luôn quay về phía trái
+                        currentDir.current = 2 // Luôn ngồi hướng trái
+                        
+                        seatPos.current = { x: tx * tileSize, y: ty * tileSize }
+                        console.log(`Found desk at offset (${dx}, ${dy}), tile: ${deskTile}, can sit! Direction: ${currentDir.current}`);
+                        break
+                      }
+                    }
+                  }
+                  if (canSit.current) break
+                }
               }
+              if (canSit.current) break
             }
           }
         }
@@ -133,26 +254,44 @@ export default function ClassCanvas() {
 
       if (moveX !== 0 || moveY !== 0) {
         const spd = player.current.speed
-
         const nextX = player.current.x + moveX * spd
         const nextY = player.current.y + moveY * spd
 
         if (moveX !== 0) {
           let canMoveX = true
+          // Kiểm tra boundary
           if (nextX < 0 || nextX > 1280 - 32) canMoveX = false
           
+          // Kiểm tra collision với vật cản
           if (canMoveX && mapData) {
             const tx = Math.floor((nextX + 16) / tileSize)
             const ty = Math.floor((player.current.y + 44) / tileSize)
             const index = ty * mapData.width + tx
+            
             if (index >= 0 && index < mapData.width * mapData.height) {
+              // Kiểm tra collision trong layer "Class" (bàn học)
               for (const layer of mapData.layers) {
-                const ln = (layer as any).name
-                if (ln === "cảnh vật" || ln === "cảnh vật") {
+                const name = (layer as any).name
+                if (name === "Class") {
                   const tile = layer.data[index]
-                  if (tile >= 3878 && tile <= 3896) {
+                  if (tile >= 4423 && tile <= 4457) { // Các tile của bàn học
                     canMoveX = false
                     break
+                  }
+                }
+              }
+              
+              // Kiểm tra collision trong layer "cảnh vật" (kệ sách, bảng)
+              if (canMoveX) {
+                for (const layer of mapData.layers) {
+                  const name = (layer as any).name
+                  if (name === "cảnh vật") {
+                    const tile = layer.data[index]
+                    // Các tile cản tránh: kệ sách (2977-2995), bảng (5213-5247)
+                    if ((tile >= 2977 && tile <= 2995) || (tile >= 5213 && tile <= 5247)) {
+                      canMoveX = false
+                      break
+                    }
                   }
                 }
               }
@@ -163,20 +302,39 @@ export default function ClassCanvas() {
 
         if (moveY !== 0) {
           let canMoveY = true
+          // Kiểm tra boundary
           if (nextY < 80 || nextY > 840) canMoveY = false
           
+          // Kiểm tra collision với vật cản
           if (canMoveY && mapData) {
             const tx = Math.floor((player.current.x + 16) / tileSize)
             const ty = Math.floor((nextY + 44) / tileSize)
             const index = ty * mapData.width + tx
+            
             if (index >= 0 && index < mapData.width * mapData.height) {
+              // Kiểm tra collision trong layer "Class" (bàn học)
               for (const layer of mapData.layers) {
-                const ln = (layer as any).name
-                if (ln === "cảnh vật" || ln === "cảnh vật") {
+                const name = (layer as any).name
+                if (name === "Class") {
                   const tile = layer.data[index]
-                  if (tile >= 3878 && tile <= 3896) {
+                  if (tile >= 4423 && tile <= 4457) { // Các tile của bàn học
                     canMoveY = false
                     break
+                  }
+                }
+              }
+              
+              // Kiểm tra collision trong layer "cảnh vật" (kệ sách, bảng)
+              if (canMoveY) {
+                for (const layer of mapData.layers) {
+                  const name = (layer as any).name
+                  if (name === "cảnh vật") {
+                    const tile = layer.data[index]
+                    // Các tile cần tránh: kệ sách (2977-2995), bảng (5213-5247)
+                    if ((tile >= 2977 && tile <= 2995) || (tile >= 5213 && tile <= 5247)) {
+                      canMoveY = false
+                      break
+                    }
                   }
                 }
               }
@@ -287,7 +445,8 @@ export default function ClassCanvas() {
       let actualFrameX = 0
       
       if (isSitting.current) {
-        const sitMap = [48, 51, 49, 50]
+        // Tư thế ngồi dựa trên hướng
+        const sitMap = [48, 51, 49, 50] // [xuống, lên, trái, phải]
         actualFrameX = sitMap[currentDir.current]
       } else if (isMoving.current) {
         const runStarts = [24, 42, 30, 36]
@@ -345,6 +504,34 @@ export default function ClassCanvas() {
         ctx.fillStyle = "white"
         ctx.font = "bold 11px Arial"
         ctx.fillText("Nhấn H để ngồi", player.current.x - 15, player.current.y - 24)
+      }
+
+      // Hiển thị UI share màn hình khi đang ngồi
+      if (isSitting.current) {
+        const canShare = !screenShare.isSharing || 
+                        screenShare.sharerName === userName || 
+                        (user?.role === 'teacher' && screenShare.sharerRole === 'student')
+        
+        if (canShare) {
+          ctx.fillStyle = "rgba(0,0,0,0.7)"
+          ctx.fillRect(player.current.x - 45, player.current.y - 40, 130, 24)
+          ctx.fillStyle = "white"
+          ctx.font = "bold 11px Arial"
+          const text = screenShare.sharerName === userName ? "Nhấn S để dừng share" : "Nhấn S để share màn hình"
+          ctx.fillText(text, player.current.x - 35, player.current.y - 24)
+        }
+      }
+
+      // Hiển thị thông tin người đang share
+      if (screenShare.isSharing) {
+        ctx.fillStyle = "rgba(0,0,0,0.8)"
+        ctx.fillRect(10, 10, 300, 60)
+        ctx.fillStyle = "#4ade80"
+        ctx.font = "bold 16px Arial"
+        ctx.fillText(`📺 ${screenShare.sharerName} đang trình chiếu`, 20, 35)
+        ctx.fillStyle = "white"
+        ctx.font = "12px Arial"
+        ctx.fillText(`Vai trò: ${screenShare.sharerRole === 'teacher' ? 'Giáo viên' : 'Học sinh'}`, 20, 55)
       }
     }
 
@@ -482,6 +669,33 @@ export default function ClassCanvas() {
                     color: "#4ade80",
                     zIndex: 1
                   }}>
+                    Vai trò
+                  </div>
+                  <div style={{ 
+                    width: "100%", 
+                    backgroundColor: "#2a2b35", 
+                    border: "1px solid #4ade80", 
+                    borderRadius: "8px", 
+                    padding: "14px 15px", 
+                    color: "white",
+                    fontSize: "15px",
+                    textAlign: "center"
+                  }}>
+                    {user?.role === 'teacher' ? 'Giáo viên' : 'Học sinh'}
+                  </div>
+                </div>
+
+                <div style={{ position: "relative", textAlign: "left" }}>
+                  <div style={{ 
+                    position: "absolute", 
+                    top: "-10px", 
+                    left: "12px", 
+                    backgroundColor: "#20212b", 
+                    padding: "0 5px", 
+                    fontSize: "12px", 
+                    color: "#4ade80",
+                    zIndex: 1
+                  }}>
                     Name
                   </div>
                   <input 
@@ -502,36 +716,7 @@ export default function ClassCanvas() {
                   />
                 </div>
 
-                <div style={{ position: "relative", textAlign: "left" }}>
-                  <div style={{ 
-                    position: "absolute", 
-                    top: "-10px", 
-                    left: "12px", 
-                    backgroundColor: "#20212b", 
-                    padding: "0 5px", 
-                    fontSize: "12px", 
-                    color: "#4ade80",
-                    zIndex: 1
-                  }}>
-                    Student ID (MSSV)
-                  </div>
-                  <input 
-                    type="text" 
-                    value={studentId}
-                    onChange={(e) => setStudentId(e.target.value)}
-                    placeholder="Enter MSSV..."
-                    style={{ 
-                      width: "100%", 
-                      backgroundColor: "transparent", 
-                      border: "1px solid #4ade80", 
-                      borderRadius: "8px", 
-                      padding: "14px 15px", 
-                      color: "white",
-                      outline: "none",
-                      fontSize: "15px"
-                    }} 
-                  />
-                </div>
+
 
                 <div style={{ 
                   backgroundColor: "#000", 
@@ -562,10 +747,10 @@ export default function ClassCanvas() {
 
             <button 
               onClick={() => {
-                if (userName.trim() && studentId.trim()) {
+                if (userName.trim() && user) {
                   setIsJoined(true)
                 } else {
-                  alert("Vui lòng nhập đầy đủ Tên và MSSV!")
+                  alert("Vui lòng nhập tên để tham gia!")
                 }
               }}
               style={{
