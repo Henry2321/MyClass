@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import VideoMeeting from './VideoMeeting';
+import { getApiUrl } from '../utils/api';
 
 interface Class {
   _id: string;
@@ -142,7 +143,7 @@ export default function Classes({ onJoinClassroom }: ClassesProps) {
   const fetchClasses = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:5000/api/classes', {
+      const response = await fetch(getApiUrl('/api/classes'), {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -171,7 +172,7 @@ export default function Classes({ onJoinClassroom }: ClassesProps) {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:5000/api/classes', {
+      const response = await fetch(getApiUrl('/api/classes'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -219,7 +220,7 @@ export default function Classes({ onJoinClassroom }: ClassesProps) {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:5000/api/classes/join', {
+      const response = await fetch(getApiUrl('/api/classes/join'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -229,7 +230,6 @@ export default function Classes({ onJoinClassroom }: ClassesProps) {
       });
 
       if (response.ok) {
-        const result = await response.json();
         setShowJoinForm(false);
         alert('Tham gia lớp học thành công!');
         fetchClasses(); // Refresh danh sách lớp
@@ -247,7 +247,7 @@ export default function Classes({ onJoinClassroom }: ClassesProps) {
   const handleDeleteClass = async (classId: string) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:5000/api/classes/${classId}`, {
+      const response = await fetch(getApiUrl(`/api/classes/${classId}`), {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`

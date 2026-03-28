@@ -103,12 +103,16 @@ io.on('connection', (socket) => {
       name: user.name,
       avatar: user.avatar || 'adam',
       peerId: user.peerId, // Lưu Peer ID để WebRTC có thể gọi
+      role: user.role === 'teacher' ? 'teacher' : 'student',
       x: 400,
       y: 400,
       frame: 0,
       direction: 0,
       isMoving: false,
-      isTalking: false // Trạng thái Mic mặc định
+      isSitting: false,
+      isTalking: false, // Trạng thái Mic mặc định
+      isCamOn: Boolean(user.isCamOn),
+      isMicOn: Boolean(user.isMicOn)
     };
     
     rooms.get(classId).set(socket.id, playerData);
@@ -123,7 +127,7 @@ io.on('connection', (socket) => {
     console.log(`User ${user.name} joined classroom: ${classId}`);
   });
 
-  socket.on('move', ({ classId, x, y, frame, direction, isMoving, isTalking }) => {
+  socket.on('move', ({ classId, x, y, frame, direction, isMoving, isSitting, isTalking }) => {
     const room = rooms.get(classId);
     if (room && room.has(socket.id)) {
       const playerData = room.get(socket.id);
@@ -132,11 +136,86 @@ io.on('connection', (socket) => {
       playerData.frame = frame;
       playerData.direction = direction;
       playerData.isMoving = isMoving;
+      playerData.isSitting = Boolean(isSitting);
       playerData.isTalking = isTalking; // Cập nhật trạng thái nói cho các máy khác thấy icon
       
       // Broadcast movement to others in the room
       socket.to(`class_${classId}`).emit('player_moved', playerData);
     }
+  });
+
+  socket.on('update_media_state', ({ classId, isCamOn, isMicOn }) => {
+    const room = rooms.get(classId);
+    if (!room || !room.has(socket.id)) return;
+
+    const playerData = room.get(socket.id);
+    playerData.isCamOn = Boolean(isCamOn);
+    playerData.isMicOn = Boolean(isMicOn);
+
+    io.to(`class_${classId}`).emit('player_media_updated', playerData);
+  });
+
+  socket.on('teacher_media_control', ({ classId, targetSocketId, mediaType, enabled }) => {
+    const room = rooms.get(classId);
+    if (!room) return;
+
+    const requester = room.get(socket.id);
+    const targetPlayer = room.get(targetSocketId);
+
+    if (!requester || requester.role !== 'teacher') {
+      socket.emit('teacher_media_control_error', {
+        message: 'Chỉ giáo viên mới có quyền điều khiển cam và mic của học sinh.'
+      });
+      return;
+    }
+
+    if (!targetPlayer || targetPlayer.role !== 'student') {
+      socket.emit('teacher_media_control_error', {
+        message: 'Chỉ có thể điều khiển cam và mic của học sinh trong lớp.'
+      });
+      return;
+    }
+
+    if (!['camera', 'microphone'].includes(mediaType)) {
+      socket.emit('teacher_media_control_error', {
+        message: 'Loại điều khiển media không hợp lệ.'
+      });
+      return;
+    }
+
+    io.to(targetSocketId).emit('teacher_media_command', {
+      teacherSocketId: socket.id,
+      teacherName: requester.name,
+      mediaType,
+      enabled: Boolean(enabled)
+    });
+  });
+
+  socket.on('teacher_media_control_result', ({
+    classId,
+    teacherSocketId,
+    targetSocketId,
+    mediaType,
+    enabled,
+    success,
+    message
+  }) => {
+    const room = rooms.get(classId);
+    if (!room) return;
+
+    const teacher = room.get(teacherSocketId);
+    const targetPlayer = room.get(targetSocketId);
+
+    if (!teacher || teacher.role !== 'teacher' || !targetPlayer) return;
+
+    io.to(teacherSocketId).emit('teacher_media_control_result', {
+      targetSocketId,
+      targetName: targetPlayer.name,
+      mediaType,
+      enabled: Boolean(enabled),
+      success: Boolean(success),
+      message
+    });
   });
 
   socket.on('send_message', ({ classId, message }) => {

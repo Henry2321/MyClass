@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { useSocket } from './SocketContext';
 import { useAuth } from './AuthContext';
+import { getPeerConnectionOptions } from '../utils/api';
 
 interface VoiceContextType {
   peer: any | null;
@@ -71,6 +72,9 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     if (!socket || !user || !socket.id) return;
 
+    let isMounted = true;
+    let activePeer: any | null = null;
+
     const initPeer = async () => {
       try {
         if (!PeerClass) {
@@ -85,10 +89,9 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         if (!PeerClass) return;
 
+        const peerConnectionOptions = getPeerConnectionOptions();
         const newPeer = new PeerClass(`peer-${socket.id}`, {
-          host: window.location.hostname,
-          port: 5000,
-          path: '/peerjs',
+          ...peerConnectionOptions,
           debug: 1,
           config: {
             'iceServers': [
@@ -97,6 +100,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             ]
           }
         });
+        activePeer = newPeer;
 
         newPeer.on('open', (id: string) => {
           console.log('PeerJS connected with ID:', id);
@@ -125,7 +129,11 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           activeCalls.current.set(call.peer, call);
         });
 
-        setPeer(newPeer);
+        if (isMounted) {
+          setPeer(newPeer);
+        } else {
+          newPeer.destroy();
+        }
       } catch (err) {
         console.error('Failed to initialize PeerJS:', err);
       }
@@ -134,7 +142,10 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     initPeer();
 
     return () => {
-      if (peer) peer.destroy();
+      isMounted = false;
+      if (activePeer) {
+        activePeer.destroy();
+      }
     };
   }, [socket?.id, user?.id]);
 

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useAuth } from './AuthContext';
+import { SOCKET_PATH, SOCKET_URL } from '../utils/api';
 
 interface SocketContextType {
   socket: Socket | null;
@@ -21,18 +22,19 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   useEffect(() => {
     if (isAuthenticated && user) {
-      // Sử dụng URL linh hoạt cho cả localhost và network
-      const socketUrl = process.env.NODE_ENV === 'production' 
-        ? 'https://your-production-server.com' 
-        : `http://${window.location.hostname}:5000`;
-      
-      console.log('Connecting to socket server:', socketUrl);
-      
-      const newSocket = io(socketUrl, {
+      const socketOptions = {
+        path: SOCKET_PATH,
         withCredentials: true,
-        transports: ['websocket', 'polling'], // Thêm fallback transport
-        timeout: 20000, // Tăng timeout
-      });
+        transports: ['websocket', 'polling'],
+        timeout: 20000,
+      };
+
+      const connectionTarget = SOCKET_URL || `${window.location.origin}${SOCKET_PATH}`;
+      console.log('Connecting to socket server:', connectionTarget);
+
+      const newSocket = SOCKET_URL
+        ? io(SOCKET_URL, socketOptions)
+        : io(socketOptions);
 
       newSocket.on('connect', () => {
         console.log('Connected to socket server');
@@ -55,12 +57,12 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return () => {
         newSocket.disconnect();
       };
-    } else {
-      if (socket) {
-        socket.disconnect();
-        setSocket(null);
-        setIsConnected(false);
-      }
+    }
+
+    if (socket) {
+      socket.disconnect();
+      setSocket(null);
+      setIsConnected(false);
     }
   }, [isAuthenticated, user?.id]);
 
