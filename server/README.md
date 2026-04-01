@@ -24,6 +24,7 @@ PORT=5000
 MONGODB_URI=mongodb://localhost:27017/onlineclass
 JWT_SECRET=your_jwt_secret_key_here
 NODE_ENV=development
+LOCAL_HTTPS=auto
 ```
 
 3. Khởi động MongoDB server
@@ -36,6 +37,16 @@ npm run dev
 # Production mode
 npm start
 ```
+
+## HTTPS notes
+
+- For local development with camera or microphone, generate a self-signed certificate:
+```bash
+npm run cert:generate
+```
+- Set `LOCAL_HTTPS_HOST` before generating if you want the certificate to match a LAN IP or hostname.
+- The generated files stay in `server/certs/` and must not be committed.
+- For real deployment, use HTTPS at a reverse proxy such as Nginx, Caddy, Cloudflare Tunnel, or your hosting platform. In that setup, keep `LOCAL_HTTPS=false`.
 
 ## API Endpoints
 

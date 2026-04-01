@@ -14,14 +14,38 @@ const { errorHandler, notFound } = require('./middleware/errorHandler');
 require('dotenv').config();
 
 const app = express();
-const server = https.createServer({
-  key: fs.readFileSync(path.join(__dirname, 'certs', 'key.pem')),
-  cert: fs.readFileSync(path.join(__dirname, 'certs', 'cert.pem'))
-}, app);
 const isProduction = process.env.NODE_ENV === 'production';
 const clientDistPath = path.resolve(__dirname, '../client/dist');
 const hasClientBuild = fs.existsSync(clientDistPath);
 const normalizeOrigin = (origin = '') => origin.trim().replace(/\/+$/, '');
+const localHttpsMode = (process.env.LOCAL_HTTPS || 'auto').toLowerCase();
+const localHttpsKeyPath = path.resolve(
+  __dirname,
+  process.env.LOCAL_HTTPS_KEY_PATH || path.join('certs', 'key.pem')
+);
+const localHttpsCertPath = path.resolve(
+  __dirname,
+  process.env.LOCAL_HTTPS_CERT_PATH || path.join('certs', 'cert.pem')
+);
+const hasLocalHttpsFiles = fs.existsSync(localHttpsKeyPath) && fs.existsSync(localHttpsCertPath);
+const useLocalHttps = localHttpsMode === 'true' || (localHttpsMode === 'auto' && hasLocalHttpsFiles);
+
+if (localHttpsMode === 'true' && !hasLocalHttpsFiles) {
+  throw new Error(
+    `LOCAL_HTTPS is enabled but the certificate files were not found at ${localHttpsCertPath} and ${localHttpsKeyPath}`
+  );
+}
+
+if (localHttpsMode === 'auto' && !hasLocalHttpsFiles) {
+  console.warn('Local TLS certificates were not found. Falling back to HTTP server mode.');
+}
+
+const server = useLocalHttps
+  ? https.createServer({
+      key: fs.readFileSync(localHttpsKeyPath),
+      cert: fs.readFileSync(localHttpsCertPath)
+    }, app)
+  : http.createServer(app);
 
 const allowedOrigins = (process.env.CLIENT_URL || '')
   .split(',')
@@ -334,6 +358,7 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV}`);
+  console.log(`Server protocol: ${useLocalHttps ? 'HTTPS (local certificate)' : 'HTTP'}`);
   if (allowedOrigins.length > 0) {
     console.log(`Allowed client origins: ${allowedOrigins.join(', ')}`);
   }

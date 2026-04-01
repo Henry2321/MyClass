@@ -59,6 +59,8 @@ npm start
 
 5. Put HTTPS in front of the backend with Nginx, Caddy, Cloudflare Tunnel, or another reverse proxy.
 
+Set `LOCAL_HTTPS=false` in `server/.env` for deployment. Public HTTPS should be handled by the reverse proxy, not by local self-signed certificates.
+
 If you deploy the frontend and backend on different public domains, then set these client build variables before running `npm run build`:
 
 - `VITE_API_BASE_URL`
@@ -73,3 +75,16 @@ See `client/.env.production.example`.
 API and socket access will work once the app is public, but voice/WebRTC between two different networks may still fail on strict NATs unless you provide a TURN server.
 
 The client now supports `VITE_ICE_SERVERS` so you can add TURN later without changing code.
+
+## Local HTTPS for camera and microphone
+
+If you need camera or microphone during local development, generate local certificates on your machine only:
+
+```bash
+cd server
+npm run cert:generate
+```
+
+Set `LOCAL_HTTPS_HOST` first if you want the certificate to match a LAN IP or hostname.
+
+These files live in `server/certs/`, are ignored by Git, and must never be pushed to GitHub.
