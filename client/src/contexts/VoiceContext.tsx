@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { useSocket } from './SocketContext';
 import { useAuth } from './AuthContext';
-import { getPeerConnectionOptions } from '../utils/api';
+import { getIceServers, getPeerConnectionOptions } from '../utils/api';
 
 interface VoiceContextType {
   peer: any | null;
@@ -94,10 +94,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           ...peerConnectionOptions,
           debug: 1,
           config: {
-            'iceServers': [
-              { urls: 'stun:stun.l.google.com:19302' },
-              { urls: 'stun:stun1.l.google.com:19302' }
-            ]
+            iceServers: getIceServers()
           }
         });
         activePeer = newPeer;

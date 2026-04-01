@@ -30,6 +30,28 @@ export const getPeerConnectionOptions = () => {
   };
 };
 
+const defaultIceServers = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+];
+
+export const getIceServers = () => {
+  const rawIceServers = import.meta.env.VITE_ICE_SERVERS?.trim();
+  if (!rawIceServers) {
+    return defaultIceServers;
+  }
+
+  try {
+    const parsedIceServers = JSON.parse(rawIceServers);
+    return Array.isArray(parsedIceServers) && parsedIceServers.length > 0
+      ? parsedIceServers
+      : defaultIceServers;
+  } catch (error) {
+    console.warn('Invalid VITE_ICE_SERVERS value, using default STUN servers.', error);
+    return defaultIceServers;
+  }
+};
+
 // API utility to attach auth headers and handle invalid tokens.
 export const apiCall = async (url: string, options: RequestInit = {}) => {
   const token = localStorage.getItem('token');

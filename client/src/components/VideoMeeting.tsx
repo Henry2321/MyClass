@@ -19,7 +19,6 @@ export default function VideoMeeting({ classData, onLeave }: VideoMeetingProps) 
   const { user } = useAuth();
   const [isVideoEnabled, setIsVideoEnabled] = useState(false);
   const [isAudioEnabled, setIsAudioEnabled] = useState(false);
-  const [isPresenting, setIsPresenting] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [chatMessage, setChatMessage] = useState('');
   const [chatMessages, setChatMessages] = useState<any[]>([]);

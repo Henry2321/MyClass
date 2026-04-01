@@ -41,9 +41,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     
     if (token && savedUser) {
       try {
-        const parsedUser = JSON.parse(savedUser);
+        JSON.parse(savedUser);
         // Verify token is still valid by calling /api/auth/me
-        verifyToken(token, parsedUser);
+        verifyToken(token);
       } catch (error) {
         console.error('Error parsing saved user:', error);
         clearAuthData();
@@ -53,7 +53,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     setLoading(false);
   }, []);
 
-  const verifyToken = async (token: string, userData: User) => {
+  const verifyToken = async (token: string) => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
         headers: {

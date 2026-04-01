@@ -5,13 +5,46 @@ const helmet = require('helmet');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const http = require('http');
+const path = require('path');
+const https = require('https');
+const fs = require('fs');
 const socketIo = require('socket.io');
 const { ExpressPeerServer } = require('peer');
 const { errorHandler, notFound } = require('./middleware/errorHandler');
 require('dotenv').config();
 
 const app = express();
-const server = http.createServer(app);
+const server = https.createServer({
+  key: fs.readFileSync(path.join(__dirname, 'certs', 'key.pem')),
+  cert: fs.readFileSync(path.join(__dirname, 'certs', 'cert.pem'))
+}, app);
+const isProduction = process.env.NODE_ENV === 'production';
+const clientDistPath = path.resolve(__dirname, '../client/dist');
+const hasClientBuild = fs.existsSync(clientDistPath);
+const normalizeOrigin = (origin = '') => origin.trim().replace(/\/+$/, '');
+
+const allowedOrigins = (process.env.CLIENT_URL || '')
+  .split(',')
+  .map(normalizeOrigin)
+  .filter(Boolean);
+
+const isOriginAllowed = (origin) => {
+  if (!origin) return true;
+  const normalizedOrigin = normalizeOrigin(origin);
+  if (!isProduction) return true;
+  return allowedOrigins.includes(normalizedOrigin);
+};
+
+const corsOrigin = (origin, callback) => {
+  if (isOriginAllowed(origin)) {
+    callback(null, true);
+    return;
+  }
+
+  callback(new Error(`Origin ${origin} is not allowed by CORS`));
+};
+
+app.set('trust proxy', 1);
 
 // PeerJS Server
 const peerServer = ExpressPeerServer(server, {
@@ -23,10 +56,12 @@ app.use(peerServer);
 const io = socketIo(server, {
   cors: {
     // Cho phép tất cả origin trong môi trường dev để hỗ trợ truy cập LAN
-    origin: process.env.NODE_ENV === 'production' ? process.env.CLIENT_URL : true,
+    origin: corsOrigin,
     methods: ["GET", "POST"],
     credentials: true
-  }
+  },
+  transports: ['websocket', 'polling'],
+  allowEIO3: true
 });
 
 // Security middleware
@@ -46,7 +81,7 @@ app.use('/api/', limiter);
 // CORS configuration
 const corsOptions = {
   // Cho phép tất cả origin trong môi trường dev để hỗ trợ truy cập LAN
-  origin: process.env.NODE_ENV === 'production' ? process.env.CLIENT_URL : true,
+  origin: corsOrigin,
   credentials: true
 };
 app.use(cors(corsOptions));
@@ -73,15 +108,50 @@ app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/activities', require('./routes/activities'));
 
+if (hasClientBuild) {
+  app.use(express.static(clientDistPath));
+
+  app.get(/^(?!\/(?:api|uploads|socket\.io|peerjs|health)\b).*/, (req, res) => {
+    res.sendFile(path.join(clientDistPath, 'index.html'));
+  });
+}
+
 // Error handling middleware
 app.use(notFound);
 app.use(errorHandler);
 
 // Socket.io
 const rooms = new Map(); // classId -> Map(socketId -> playerData)
+const classroomSpawnPoints = [
+  { x: 104, y: 600, direction: 0 },
+  { x: 144, y: 600, direction: 0 },
+  { x: 184, y: 600, direction: 0 },
+  { x: 224, y: 600, direction: 0 },
+  { x: 104, y: 552, direction: 0 },
+  { x: 144, y: 552, direction: 0 },
+  { x: 184, y: 552, direction: 0 },
+  { x: 224, y: 552, direction: 0 }
+];
+
+const getSpawnPoint = (roomPlayers) => {
+  const occupiedSpawns = new Set(
+    Array.from(roomPlayers.values()).map(player => `${player.x}:${player.y}`)
+  );
+
+  const availableSpawn = classroomSpawnPoints.find(
+    spawn => !occupiedSpawns.has(`${spawn.x}:${spawn.y}`)
+  );
+
+  return availableSpawn || classroomSpawnPoints[roomPlayers.size % classroomSpawnPoints.length];
+};
 
 io.on('connection', (socket) => {
-  console.log('User connected:', socket.id);
+  console.log('Socket.IO: User connected:', socket.id, 'from:', socket.handshake.address);
+  console.log('Socket.IO: Connection details:', {
+    transport: socket.conn.transport.name,
+    upgraded: socket.conn.upgraded,
+    remoteAddress: socket.handshake.address
+  });
   
   // Join user room for notifications
   socket.on('join', (userId) => {
@@ -96,6 +166,9 @@ io.on('connection', (socket) => {
     if (!rooms.has(classId)) {
       rooms.set(classId, new Map());
     }
+
+    const roomPlayers = rooms.get(classId);
+    const spawnPoint = getSpawnPoint(roomPlayers);
     
     const playerData = {
       id: socket.id,
@@ -104,10 +177,10 @@ io.on('connection', (socket) => {
       avatar: user.avatar || 'adam',
       peerId: user.peerId, // Lưu Peer ID để WebRTC có thể gọi
       role: user.role === 'teacher' ? 'teacher' : 'student',
-      x: 400,
-      y: 400,
+      x: spawnPoint.x,
+      y: spawnPoint.y,
       frame: 0,
-      direction: 0,
+      direction: spawnPoint.direction,
       isMoving: false,
       isSitting: false,
       isTalking: false, // Trạng thái Mic mặc định
@@ -115,10 +188,10 @@ io.on('connection', (socket) => {
       isMicOn: Boolean(user.isMicOn)
     };
     
-    rooms.get(classId).set(socket.id, playerData);
+    roomPlayers.set(socket.id, playerData);
     
     // Send current players in room to the new player
-    const playersInRoom = Array.from(rooms.get(classId).values());
+    const playersInRoom = Array.from(roomPlayers.values());
     socket.emit('current_players', playersInRoom);
     
     // Notify others about new player
@@ -258,9 +331,15 @@ process.on('SIGTERM', () => {
 });
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV}`);
+  if (allowedOrigins.length > 0) {
+    console.log(`Allowed client origins: ${allowedOrigins.join(', ')}`);
+  }
+  if (hasClientBuild) {
+    console.log(`Serving client build from: ${clientDistPath}`);
+  }
 });
 
 module.exports = { app, io };

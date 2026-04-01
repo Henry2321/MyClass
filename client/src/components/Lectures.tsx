@@ -628,7 +628,6 @@ export default function Lectures() {
               <div className="form-actions">
                 <button className="btn-secondary" onClick={() => setShowCreateModal(false)}>Hủy</button>
                 <button className="btn-outline" onClick={() => {
-                  const formData = new FormData(document.querySelector('.create-form') as HTMLFormElement);
                   const newLecture: Lecture = {
                     id: Math.max(...lecturesList.map(l => l.id)) + 1,
                     title: (document.querySelector('input[placeholder="Nhập tiêu đề bài giảng"]') as HTMLInputElement)?.value || 'Bài giảng mới',

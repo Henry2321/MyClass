@@ -396,10 +396,20 @@ export default function ClassCanvas() {
   }
 
   const toggleCamera = async () => {
+    // Kiểm tra browser support
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert("Trình duyệt không hỗ trợ camera. Cần HTTPS hoặc localhost.")
+      return
+    }
     await setCameraEnabled(!isCamOnRef.current)
   }
 
   const toggleMic = async () => {
+    // Kiểm tra browser support
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert("Trình duyệt không hỗ trợ microphone. Cần HTTPS hoặc localhost.")
+      return
+    }
     await setMicEnabled(!isMicOnRef.current)
   }
 
@@ -622,6 +632,17 @@ export default function ClassCanvas() {
     })
 
     socket.on('current_players', (players: ClassroomPlayer[]) => {
+      console.log('Received current_players:', players.length, 'players')
+      console.log('Players data:', players.map(p => ({ id: p.id, name: p.name, socketId: p.id === socket.id ? 'SELF' : 'OTHER' })))
+      const selfPlayer = players.find(p => p.id === socket.id)
+      if (selfPlayer) {
+        player.current.x = selfPlayer.x
+        player.current.y = selfPlayer.y
+        currentDir.current = selfPlayer.direction
+        frameX.current = selfPlayer.frame
+        isSitting.current = Boolean(selfPlayer.isSitting)
+      }
+
       remotePlayers.current.clear()
       setParticipantRoster(players.filter(p => p.id !== socket.id))
 
@@ -1081,6 +1102,7 @@ export default function ClassCanvas() {
 
     function drawMap(){
       if(!mapData)return
+      console.log('Drawing map, remote players:', remotePlayers.current.size)
       
       for(const layer of mapData.layers){
         const name = (layer as any).name
