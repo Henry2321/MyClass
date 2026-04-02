@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useSocket } from '../contexts/SocketContext'
+import { useAuth } from '../contexts/AuthContext'
 
 interface Message {
   id: string
@@ -16,6 +17,7 @@ interface ClassroomChatProps {
 
 export default function ClassroomChat({ isVisible, onToggle }: ClassroomChatProps) {
   const { socket } = useSocket()
+  const { user } = useAuth()
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -43,11 +45,32 @@ export default function ClassroomChat({ isVisible, onToggle }: ClassroomChatProp
     scrollToBottom()
   }, [messages])
 
+  // Lắng nghe tin nhắn mới từ server
+  useEffect(() => {
+    if (!socket) return
+
+    const handleNewMessage = (message: Message) => {
+      console.log('Received new message:', message)
+      setMessages(prev => {
+        // Kiểm tra xem message đã tồn tại chưa để tránh duplicate
+        const exists = prev.some(m => m.id === message.id)
+        if (exists) return prev
+        return [...prev, message]
+      })
+    }
+
+    socket.on('new_message', handleNewMessage)
+
+    return () => {
+      socket.off('new_message', handleNewMessage)
+    }
+  }, [socket])
+
   const handleSendMessage = () => {
     if (newMessage.trim() && socket) {
       const message: Message = {
         id: Date.now().toString(),
-        sender: 'You', // Sẽ được thay thế bằng tên user thực
+        sender: user?.name || 'Anonymous', // Sử dụng tên user thực
         content: newMessage.trim(),
         timestamp: new Date().toLocaleTimeString('vi-VN', { 
           hour: '2-digit', 
@@ -56,9 +79,8 @@ export default function ClassroomChat({ isVisible, onToggle }: ClassroomChatProp
         type: 'user'
       }
       
-      setMessages(prev => [...prev, message])
-      
-      // Gửi message qua socket
+      // Chỉ gửi message qua socket, không thêm vào local state
+      // Server sẽ broadcast lại và tất cả client sẽ nhận được
       socket.emit('send_message', {
         classId: 'main-class',
         message: message
