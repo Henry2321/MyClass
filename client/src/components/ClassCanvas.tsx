@@ -124,7 +124,7 @@ export default function ClassCanvas() {
   })
   // Screen sharing WebRTC connections
   const screenShareConnections = useRef<Map<string, RTCPeerConnection>>(new Map())
-  const [isReceivingScreenShare, setIsReceivingScreenShare] = useState(false)
+  const [, setIsReceivingScreenShare] = useState(false)
   
   const seatActionUiRef = useRef<SeatActionUi>({
     canSit: false,
@@ -520,7 +520,7 @@ export default function ClassCanvas() {
           
           // Tạo WebRTC connections cho tất cả người chơi khác
           setTimeout(() => {
-            remotePlayers.current.forEach((player, socketId) => {
+            remotePlayers.current.forEach((_player, socketId) => {
               startScreenShareConnection(socketId)
             })
           }, 1000) // Delay để đảm bảo các client khác đã nhận được screen_share_started event
