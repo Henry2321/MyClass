@@ -17,24 +17,28 @@ export default defineConfig(({ mode }) => {
         '/api': {
           target: backendTarget,
           changeOrigin: true,
-          secure: false
+          secure: false,
+          rejectUnauthorized: false // Cho phép self-signed certificates
         },
         '/socket.io': {
           target: backendTarget,
           changeOrigin: true,
           secure: false,
+          rejectUnauthorized: false,
           ws: true
         },
         '/peerjs': {
           target: backendTarget,
           changeOrigin: true,
           secure: false,
+          rejectUnauthorized: false,
           ws: true
         },
         '/uploads': {
           target: backendTarget,
           changeOrigin: true,
-          secure: false
+          secure: false,
+          rejectUnauthorized: false
         }
       }
     }

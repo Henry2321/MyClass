@@ -16,7 +16,12 @@ require('dotenv').config();
 const app = express();
 const server = https.createServer({
   key: fs.readFileSync(path.join(__dirname, 'certs', 'key.pem')),
-  cert: fs.readFileSync(path.join(__dirname, 'certs', 'cert.pem'))
+  cert: fs.readFileSync(path.join(__dirname, 'certs', 'cert.pem')),
+  // Thêm các options để cải thiện SSL stability
+  secureProtocol: 'TLSv1_2_method',
+  honorCipherOrder: true,
+  requestCert: false,
+  rejectUnauthorized: false
 }, app);
 const isProduction = process.env.NODE_ENV === 'production';
 const clientDistPath = path.resolve(__dirname, '../client/dist');
@@ -295,6 +300,47 @@ io.on('connection', (socket) => {
     // Broadcast message to everyone in the room (including sender if needed, but usually handled by client)
     io.to(`class_${classId}`).emit('new_message', message);
   });
+
+  // Screen sharing events
+  socket.on('start_screen_share', ({ classId, sharerName, sharerRole }) => {
+    console.log(`${sharerName} started screen sharing in ${classId}`);
+    // Thông báo cho tất cả người khác trong phòng
+    socket.to(`class_${classId}`).emit('screen_share_started', {
+      sharerSocketId: socket.id,
+      sharerName,
+      sharerRole
+    });
+  });
+
+  socket.on('stop_screen_share', ({ classId }) => {
+    console.log(`Screen sharing stopped in ${classId}`);
+    // Thông báo cho tất cả người khác trong phòng
+    socket.to(`class_${classId}`).emit('screen_share_stopped', {
+      sharerSocketId: socket.id
+    });
+  });
+
+  // WebRTC signaling cho screen share
+  socket.on('screen_share_offer', ({ classId, targetSocketId, offer }) => {
+    io.to(targetSocketId).emit('screen_share_offer', {
+      sharerSocketId: socket.id,
+      offer
+    });
+  });
+
+  socket.on('screen_share_answer', ({ classId, sharerSocketId, answer }) => {
+    io.to(sharerSocketId).emit('screen_share_answer', {
+      viewerSocketId: socket.id,
+      answer
+    });
+  });
+
+  socket.on('screen_share_ice_candidate', ({ classId, targetSocketId, candidate }) => {
+    io.to(targetSocketId).emit('screen_share_ice_candidate', {
+      fromSocketId: socket.id,
+      candidate
+    });
+  });
   
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
@@ -332,7 +378,8 @@ process.on('SIGTERM', () => {
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`HTTPS Server running on port ${PORT}`);
+  console.log(`Server URL: https://26.140.16.205:${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV}`);
   if (allowedOrigins.length > 0) {
     console.log(`Allowed client origins: ${allowedOrigins.join(', ')}`);
@@ -340,6 +387,16 @@ server.listen(PORT, '0.0.0.0', () => {
   if (hasClientBuild) {
     console.log(`Serving client build from: ${clientDistPath}`);
   }
+});
+
+// Handle server errors
+server.on('error', (error) => {
+  console.error('Server error:', error);
+});
+
+server.on('clientError', (err, socket) => {
+  console.error('Client error:', err.message);
+  socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
 });
 
 module.exports = { app, io };

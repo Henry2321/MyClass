@@ -7,6 +7,8 @@ interface ScreenShareState {
   sharerName: string
   sharerRole: 'teacher' | 'student'
   stream: MediaStream | null
+  sharerSocketId?: string // Thêm để track người share
+  isViewing?: boolean // Thêm để biết mình đang xem hay share
 }
 
 type ClassroomRole = 'teacher' | 'student'
@@ -81,13 +83,17 @@ export default function ClassCanvas() {
     isSharing: false,
     sharerName: '',
     sharerRole: 'student',
-    stream: null
+    stream: null,
+    sharerSocketId: '',
+    isViewing: false
   })
   const screenShareRef = useRef<ScreenShareState>({
     isSharing: false,
     sharerName: '',
     sharerRole: 'student',
-    stream: null
+    stream: null,
+    sharerSocketId: '',
+    isViewing: false
   })
   // Media state cho cam/mic preview
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
@@ -116,6 +122,10 @@ export default function ClassCanvas() {
     canShare: true,
     shareLabel: 'Chia sẻ màn hình'
   })
+  // Screen sharing WebRTC connections
+  const screenShareConnections = useRef<Map<string, RTCPeerConnection>>(new Map())
+  const [isReceivingScreenShare, setIsReceivingScreenShare] = useState(false)
+  
   const seatActionUiRef = useRef<SeatActionUi>({
     canSit: false,
     isSitting: false,
@@ -492,11 +502,29 @@ export default function ClassCanvas() {
           isSharing: true,
           sharerName: currentUserName,
           sharerRole: currentUserRole,
-          stream: stream
+          stream: stream,
+          sharerSocketId: socket?.id || '',
+          isViewing: false
         }
 
         screenShareRef.current = nextShareState
         setScreenShare(nextShareState)
+
+        // Thông báo cho server và các client khác
+        if (socket) {
+          socket.emit('start_screen_share', {
+            classId: CLASSROOM_ID,
+            sharerName: currentUserName,
+            sharerRole: currentUserRole
+          })
+          
+          // Tạo WebRTC connections cho tất cả người chơi khác
+          setTimeout(() => {
+            remotePlayers.current.forEach((player, socketId) => {
+              startScreenShareConnection(socketId)
+            })
+          }, 1000) // Delay để đảm bảo các client khác đã nhận được screen_share_started event
+        }
 
         // Lắng nghe khi user dừng share từ browser
         stream.getVideoTracks()[0].onended = () => {
@@ -537,11 +565,90 @@ export default function ClassCanvas() {
       isSharing: false,
       sharerName: '',
       sharerRole: 'student',
-      stream: null
+      stream: null,
+      sharerSocketId: '',
+      isViewing: false
     }
 
     screenShareRef.current = nextShareState
     setScreenShare(nextShareState)
+
+    // Thông báo cho server khi dừng share
+    if (socket) {
+      socket.emit('stop_screen_share', {
+        classId: CLASSROOM_ID
+      })
+    }
+    
+    // Đóng tất cả WebRTC connections
+    screenShareConnections.current.forEach(pc => {
+      pc.close()
+    })
+    screenShareConnections.current.clear()
+    setIsReceivingScreenShare(false)
+  }
+
+  // WebRTC Screen Sharing Functions
+  const createScreenShareConnection = (targetSocketId: string, isOfferer: boolean) => {
+    const pc = new RTCPeerConnection({
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+      ]
+    })
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate && socket) {
+        socket.emit('screen_share_ice_candidate', {
+          classId: CLASSROOM_ID,
+          targetSocketId,
+          candidate: event.candidate
+        })
+      }
+    }
+
+    if (!isOfferer) {
+      // Viewer: nhận stream từ sharer
+      pc.ontrack = (event) => {
+        console.log('Received screen share stream:', event.streams[0])
+        const nextShareState: ScreenShareState = {
+          ...screenShareRef.current,
+          stream: event.streams[0]
+        }
+        screenShareRef.current = nextShareState
+        setScreenShare(nextShareState)
+        setIsReceivingScreenShare(true)
+      }
+    }
+
+    screenShareConnections.current.set(targetSocketId, pc)
+    return pc
+  }
+
+  const startScreenShareConnection = async (targetSocketId: string) => {
+    if (!screenShareRef.current.stream) return
+
+    const pc = createScreenShareConnection(targetSocketId, true)
+    
+    // Thêm screen share stream vào connection
+    screenShareRef.current.stream.getTracks().forEach(track => {
+      pc.addTrack(track, screenShareRef.current.stream!)
+    })
+
+    try {
+      const offer = await pc.createOffer()
+      await pc.setLocalDescription(offer)
+      
+      if (socket) {
+        socket.emit('screen_share_offer', {
+          classId: CLASSROOM_ID,
+          targetSocketId,
+          offer
+        })
+      }
+    } catch (error) {
+      console.error('Error creating screen share offer:', error)
+    }
   }
 
   const toggleSitting = () => {
@@ -759,6 +866,81 @@ export default function ClassCanvas() {
 
     socket.on('teacher_media_control_error', ({ message }: { message: string }) => {
       showMediaNotice(message, 'error')
+    })
+
+    // Screen sharing events
+    socket.on('screen_share_started', ({ sharerSocketId, sharerName, sharerRole }) => {
+      console.log('Screen share started by:', sharerName)
+      const nextShareState: ScreenShareState = {
+        isSharing: true,
+        sharerName,
+        sharerRole,
+        stream: null,
+        sharerSocketId,
+        isViewing: true
+      }
+      screenShareRef.current = nextShareState
+      setScreenShare(nextShareState)
+    })
+
+    // WebRTC Screen Share Events
+    socket.on('screen_share_offer', async ({ sharerSocketId, offer }) => {
+      console.log('Received screen share offer from:', sharerSocketId)
+      const pc = createScreenShareConnection(sharerSocketId, false)
+      
+      try {
+        await pc.setRemoteDescription(offer)
+        const answer = await pc.createAnswer()
+        await pc.setLocalDescription(answer)
+        
+        socket.emit('screen_share_answer', {
+          classId: CLASSROOM_ID,
+          sharerSocketId,
+          answer
+        })
+      } catch (error) {
+        console.error('Error handling screen share offer:', error)
+      }
+    })
+
+    socket.on('screen_share_answer', async ({ viewerSocketId, answer }) => {
+      console.log('Received screen share answer from:', viewerSocketId)
+      const pc = screenShareConnections.current.get(viewerSocketId)
+      if (pc) {
+        try {
+          await pc.setRemoteDescription(answer)
+        } catch (error) {
+          console.error('Error handling screen share answer:', error)
+        }
+      }
+    })
+
+    socket.on('screen_share_ice_candidate', async ({ fromSocketId, candidate }) => {
+      console.log('Received screen share ICE candidate from:', fromSocketId)
+      const pc = screenShareConnections.current.get(fromSocketId)
+      if (pc) {
+        try {
+          await pc.addIceCandidate(candidate)
+        } catch (error) {
+          console.error('Error adding screen share ICE candidate:', error)
+        }
+      }
+    })
+
+    socket.on('screen_share_stopped', ({ sharerSocketId }) => {
+      console.log('Screen share stopped by:', sharerSocketId)
+      if (screenShareRef.current.sharerSocketId === sharerSocketId) {
+        const nextShareState: ScreenShareState = {
+          isSharing: false,
+          sharerName: '',
+          sharerRole: 'student',
+          stream: null,
+          sharerSocketId: '',
+          isViewing: false
+        }
+        screenShareRef.current = nextShareState
+        setScreenShare(nextShareState)
+      }
     })
 
     socket.on('player_left', (id: string) => {
@@ -1462,6 +1644,11 @@ export default function ClassCanvas() {
       socket.off('teacher_media_command')
       socket.off('teacher_media_control_result')
       socket.off('teacher_media_control_error')
+      socket.off('screen_share_started')
+      socket.off('screen_share_stopped')
+      socket.off('screen_share_offer')
+      socket.off('screen_share_answer')
+      socket.off('screen_share_ice_candidate')
       socket.off('player_left')
     }
 
@@ -1833,7 +2020,7 @@ export default function ClassCanvas() {
       )}
 
       {/* Screen Share Display */}
-      {screenShare.isSharing && screenShare.stream && (
+      {screenShare.isSharing && (
         <div style={{
           position: "fixed",
           top: "50%",
@@ -1859,7 +2046,19 @@ export default function ClassCanvas() {
               📺 {screenShare.sharerName} đang chia sẻ màn hình
             </h3>
             <button
-              onClick={stopScreenShare}
+              onClick={() => {
+                if (screenShare.isViewing) {
+                  // Nếu đang xem, chỉ đóng view
+                  const nextShareState: ScreenShareState = {
+                    ...screenShare,
+                    stream: null
+                  }
+                  setScreenShare(nextShareState)
+                } else {
+                  // Nếu đang share, dừng share
+                  stopScreenShare()
+                }
+              }}
               style={{
                 background: "#ef4444",
                 color: "white",
@@ -1870,24 +2069,41 @@ export default function ClassCanvas() {
                 fontSize: "14px"
               }}
             >
-              Đóng
+              {screenShare.isViewing ? 'Đóng' : 'Dừng chia sẻ'}
             </button>
           </div>
-          <video
-            autoPlay
-            playsInline
-            style={{
+          
+          {screenShare.stream ? (
+            <video
+              autoPlay
+              playsInline
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "contain",
+                borderRadius: "8px"
+              }}
+              ref={(video) => {
+                if (video && screenShare.stream) {
+                  video.srcObject = screenShare.stream;
+                }
+              }}
+            />
+          ) : (
+            <div style={{
               width: "100%",
               height: "100%",
-              objectFit: "contain",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "white",
+              fontSize: "16px",
+              backgroundColor: "rgba(255,255,255,0.1)",
               borderRadius: "8px"
-            }}
-            ref={(video) => {
-              if (video && screenShare.stream) {
-                video.srcObject = screenShare.stream;
-              }
-            }}
-          />
+            }}>
+              Đang chờ kết nối màn hình chia sẻ...
+            </div>
+          )}
         </div>
       )}
 
