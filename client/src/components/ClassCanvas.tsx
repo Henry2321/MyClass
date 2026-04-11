@@ -428,9 +428,8 @@ export default function ClassCanvas() {
     if (isJoined) {
       setMyStream(localStream);
       
-      // Nếu vừa bật Mic, hãy thực hiện cuộc gọi lại cho tất cả người chơi khác 
-      // để đảm bảo họ nghe thấy mình
-      if (localStream && (isMicOn || isCamOn) && peer) {
+      // Khi có stream mới, gọi lại tất cả remote players để đảm bảo kết nối
+      if (localStream && peer) {
         remotePlayers.current.forEach(p => {
           if (p.peerId) {
             makeCall(p.peerId, localStream);
@@ -438,7 +437,7 @@ export default function ClassCanvas() {
         });
       }
     }
-  }, [localStream, isJoined, isMicOn, isCamOn, peer]);
+  }, [localStream, isJoined, peer]);
 
   // useEffect để gán stream vào video element mỗi khi stream hoặc trạng thái cam thay đổi
   useEffect(() => {

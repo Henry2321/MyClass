@@ -35,6 +35,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
   const activeCalls = useRef<Map<string, any>>(new Map());
   const myStreamRef = useRef<MediaStream | null>(null);
+  const pendingCallPeerIds = useRef<Set<string>>(new Set());
 
   // Đồng bộ myStream state vào ref
   useEffect(() => {
@@ -49,9 +50,21 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Hàm để thực hiện cuộc gọi và lưu vào ref
   const makeCall = (remotePeerId: string, stream: MediaStream) => {
-    if (!peer) return;
+    if (!peer) {
+      // Lưu lại để gọi sau khi peer sẵn sàng
+      pendingCallPeerIds.current.add(remotePeerId);
+      return;
+    }
+    // Hủy cuộc gọi cũ nếu có
+    if (activeCalls.current.has(remotePeerId)) {
+      activeCalls.current.get(remotePeerId)?.close();
+    }
     console.log('Initiating call to:', remotePeerId);
     const call = peer.call(remotePeerId, stream);
+    if (!call) {
+      console.warn('peer.call returned null for:', remotePeerId);
+      return;
+    }
     
     call.on('stream', (remoteStream: MediaStream) => {
       console.log('Received remote stream from (outgoing call):', remotePeerId);
@@ -101,6 +114,23 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         newPeer.on('open', (id: string) => {
           console.log('PeerJS connected with ID:', id);
+          // Gọi lại các peer đang chờ nếu stream đã sẵn sàng
+          if (myStreamRef.current && pendingCallPeerIds.current.size > 0) {
+            pendingCallPeerIds.current.forEach(peerId => {
+              const call = newPeer.call(peerId, myStreamRef.current!);
+              if (call) {
+                call.on('stream', (remoteStream: MediaStream) => {
+                  setRemoteStreams(prev => {
+                    const next = new Map(prev);
+                    next.set(peerId, remoteStream);
+                    return next;
+                  });
+                });
+                activeCalls.current.set(peerId, call);
+              }
+            });
+            pendingCallPeerIds.current.clear();
+          }
         });
 
         newPeer.on('error', (err: any) => {

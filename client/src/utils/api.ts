@@ -15,17 +15,22 @@ export const getApiUrl = (path: string) => {
 };
 
 export const getPeerConnectionOptions = () => {
+  const peerPath = import.meta.env.VITE_PEER_PATH || '/peerjs';
   const configuredPeerUrl = trimTrailingSlash(import.meta.env.VITE_PEER_SERVER_URL || '');
-  const baseUrl = configuredPeerUrl
-    ? new URL(configuredPeerUrl, window.location.origin)
-    : new URL(window.location.origin);
 
-  const pathFromUrl = baseUrl.pathname && baseUrl.pathname !== '/' ? baseUrl.pathname : '/peerjs';
+  // Nếu VITE_PEER_SERVER_URL có chứa path trùng với peerPath thì bỏ path đó đi
+  const cleanPeerUrl = configuredPeerUrl.endsWith(peerPath)
+    ? configuredPeerUrl.slice(0, -peerPath.length)
+    : configuredPeerUrl;
+
+  const baseUrl = cleanPeerUrl
+    ? new URL(cleanPeerUrl)
+    : new URL(window.location.origin);
 
   return {
     host: baseUrl.hostname,
     port: Number(baseUrl.port || (baseUrl.protocol === 'https:' ? 443 : 80)),
-    path: import.meta.env.VITE_PEER_PATH || pathFromUrl,
+    path: peerPath,
     secure: baseUrl.protocol === 'https:',
   };
 };
@@ -33,6 +38,23 @@ export const getPeerConnectionOptions = () => {
 const defaultIceServers = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
+  // TURN server miễn phí từ Open Relay Project (metered.ca)
+  // Thay bằng TURN server của bạn nếu có
+  {
+    urls: 'turn:openrelay.metered.ca:80',
+    username: 'openrelayproject',
+    credential: 'openrelayproject'
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443',
+    username: 'openrelayproject',
+    credential: 'openrelayproject'
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+    username: 'openrelayproject',
+    credential: 'openrelayproject'
+  }
 ];
 
 export const getIceServers = () => {
