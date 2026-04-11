@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { useAuth } from '../contexts/AuthContext'
 import ClassroomChat from './ClassroomChat'
+import { getIceServers } from '../utils/api'
 
 interface ScreenShareState {
   isSharing: boolean
@@ -589,12 +590,7 @@ export default function ClassCanvas() {
 
   // WebRTC Screen Sharing Functions
   const createScreenShareConnection = (targetSocketId: string, isOfferer: boolean) => {
-    const pc = new RTCPeerConnection({
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
-      ]
-    })
+    const pc = new RTCPeerConnection({ iceServers: getIceServers() })
 
     pc.onicecandidate = (event) => {
       if (event.candidate && socket) {

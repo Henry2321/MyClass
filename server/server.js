@@ -82,7 +82,11 @@ app.set("trust proxy", 1);
 // PeerJS Server
 const peerServer = ExpressPeerServer(server, {
   debug: true,
-  path: "/peerjs",
+  path: '/peerjs',
+  corsOptions: {
+    origin: corsOrigin,
+    credentials: true
+  }
 });
 app.use(peerServer);
 
@@ -440,6 +444,19 @@ server.listen(PORT, "0.0.0.0", () => {
   }
   if (hasClientBuild) {
     console.log(`Serving client build from: ${clientDistPath}`);
+  }
+
+  // Keep-alive: tự ping để Render free tier không bị sleep
+  if (isProduction && process.env.RENDER_EXTERNAL_URL) {
+    const keepAliveUrl = `${process.env.RENDER_EXTERNAL_URL}/health`;
+    setInterval(() => {
+      const protocol = keepAliveUrl.startsWith('https') ? require('https') : require('http');
+      protocol.get(keepAliveUrl, (res) => {
+        console.log(`Keep-alive ping: ${res.statusCode}`);
+      }).on('error', (err) => {
+        console.warn('Keep-alive ping failed:', err.message);
+      });
+    }, 14 * 60 * 1000); // 14 phút
   }
 });
 
