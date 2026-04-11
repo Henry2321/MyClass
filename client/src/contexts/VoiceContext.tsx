@@ -36,15 +36,32 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const activeCalls = useRef<Map<string, any>>(new Map());
   const myStreamRef = useRef<MediaStream | null>(null);
   const pendingCallPeerIds = useRef<Set<string>>(new Set());
+  const peerRef = useRef<any>(null);
 
   // Đồng bộ myStream state vào ref
   useEffect(() => {
     myStreamRef.current = myStream;
-    // Khi myStream thay đổi, cập nhật trạng thái mute của track
     if (myStream) {
       myStream.getAudioTracks().forEach(track => {
         track.enabled = isPushingToTalk;
       });
+      // Gọi lại cho tất cả pending peers khi stream sẵn sàng
+      if (pendingCallPeerIds.current.size > 0 && peerRef.current) {
+        pendingCallPeerIds.current.forEach(peerId => {
+          const call = peerRef.current.call(peerId, myStream);
+          if (call) {
+            call.on('stream', (remoteStream: MediaStream) => {
+              setRemoteStreams(prev => {
+                const next = new Map(prev);
+                next.set(peerId, remoteStream);
+                return next;
+              });
+            });
+            activeCalls.current.set(peerId, call);
+          }
+        });
+        pendingCallPeerIds.current.clear();
+      }
     }
   }, [myStream, isPushingToTalk]);
 
@@ -139,9 +156,6 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         newPeer.on('call', (call: any) => {
           console.log('Receiving call from:', call.peer);
-          
-          // QUAN TRỌNG: Luôn trả lời cuộc gọi ngay cả khi myStream chưa có
-          // để thiết lập kết nối nhận âm thanh từ người gọi
           call.answer(myStreamRef.current || undefined);
           
           call.on('stream', (remoteStream: MediaStream) => {
@@ -154,9 +168,15 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           });
 
           activeCalls.current.set(call.peer, call);
+
+          // Nếu chưa có stream lúc answer, gọi lại ngược khi stream sẵn sàng
+          if (!myStreamRef.current) {
+            pendingCallPeerIds.current.add(call.peer);
+          }
         });
 
         if (isMounted) {
+          peerRef.current = newPeer;
           setPeer(newPeer);
         } else {
           newPeer.destroy();
