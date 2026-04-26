@@ -3,18 +3,21 @@ const multer = require('multer');
 const Assignment = require('../models/Assignment');
 const Class = require('../models/Class');
 const { auth, teacherAuth } = require('../middleware/auth');
-const { createActivity, notifyClassStudents } = require('../utils/notifications');
+const {
+  createActivity,
+  createNotification,
+  notifyClassStudents,
+} = require('../utils/notifications');
 
 const router = express.Router();
 
-// Multer config
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, 'uploads/assignments/');
   },
   filename: (req, file, cb) => {
-    cb(null, Date.now() + '-' + file.originalname);
-  }
+    cb(null, `${Date.now()}-${file.originalname}`);
+  },
 });
 
 const upload = multer({ storage });
@@ -22,13 +25,13 @@ const upload = multer({ storage });
 // Get assignments by class
 router.get('/class/:classId', auth, async (req, res) => {
   try {
-    const assignments = await Assignment.find({ 
+    const assignments = await Assignment.find({
       class: req.params.classId,
-      isPublished: true 
+      isPublished: true,
     })
-    .populate('teacher', 'name')
-    .sort({ dueDate: 1 });
-    
+      .populate('teacher', 'name')
+      .sort({ dueDate: 1 });
+
     res.json(assignments);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -45,11 +48,11 @@ router.post('/', auth, teacherAuth, upload.array('files'), async (req, res) => {
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    const files = req.files?.map(file => ({
+    const files = req.files?.map((file) => ({
       filename: file.filename,
       originalName: file.originalname,
       path: file.path,
-      size: file.size
+      size: file.size,
     })) || [];
 
     const assignment = new Assignment({
@@ -59,20 +62,19 @@ router.post('/', auth, teacherAuth, upload.array('files'), async (req, res) => {
       teacher: req.user._id,
       dueDate: new Date(dueDate),
       maxScore: maxScore || 100,
-      files
+      files,
     });
 
     await assignment.save();
     await assignment.populate('teacher', 'name');
-    
-    // Create activity
+
     await createActivity(
       req.user._id,
       'assignment_created',
       `Tạo bài tập: ${title}`,
-      { classId, assignmentId: assignment._id }
+      { classId, assignmentId: assignment._id },
     );
-    
+
     res.status(201).json(assignment);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -83,24 +85,23 @@ router.post('/', auth, teacherAuth, upload.array('files'), async (req, res) => {
 router.patch('/:id/publish', auth, teacherAuth, async (req, res) => {
   try {
     const assignment = await Assignment.findById(req.params.id).populate('class');
-    
+
     if (!assignment || assignment.teacher.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: 'Access denied' });
     }
 
     assignment.isPublished = true;
     await assignment.save();
-    
-    // Notify students
+
     await notifyClassStudents(
       assignment.class._id,
       req.user._id,
       'Bài tập mới',
       `Bài tập "${assignment.title}" đã được giao`,
       'assignment',
-      { assignmentId: assignment._id }
+      { assignmentId: assignment._id },
     );
-    
+
     res.json(assignment);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -111,8 +112,8 @@ router.patch('/:id/publish', auth, teacherAuth, async (req, res) => {
 router.post('/:id/submit', auth, upload.array('files'), async (req, res) => {
   try {
     const { content } = req.body;
-    const assignment = await Assignment.findById(req.params.id);
-    
+    const assignment = await Assignment.findById(req.params.id).populate('class', 'name');
+
     if (!assignment) {
       return res.status(404).json({ message: 'Assignment not found' });
     }
@@ -121,15 +122,15 @@ router.post('/:id/submit', auth, upload.array('files'), async (req, res) => {
       return res.status(400).json({ message: 'Assignment deadline has passed' });
     }
 
-    const files = req.files?.map(file => ({
+    const files = req.files?.map((file) => ({
       filename: file.filename,
       originalName: file.originalname,
       path: file.path,
-      size: file.size
+      size: file.size,
     })) || [];
 
     const existingSubmission = assignment.submissions.find(
-      sub => sub.student.toString() === req.user._id.toString()
+      (submission) => submission.student.toString() === req.user._id.toString(),
     );
 
     if (existingSubmission) {
@@ -141,20 +142,28 @@ router.post('/:id/submit', auth, upload.array('files'), async (req, res) => {
         student: req.user._id,
         files,
         content,
-        submittedAt: new Date()
+        submittedAt: new Date(),
       });
     }
 
     await assignment.save();
-    
-    // Create activity
+
     await createActivity(
       req.user._id,
       'assignment_submitted',
       `Nộp bài tập: ${assignment.title}`,
-      { classId: assignment.class, assignmentId: assignment._id }
+      { classId: assignment.class._id, assignmentId: assignment._id },
     );
-    
+
+    await createNotification(
+      assignment.teacher,
+      req.user._id,
+      'Bài nộp mới',
+      `${req.user.name} đã nộp bài "${assignment.title}"`,
+      'assignment',
+      { classId: assignment.class._id, assignmentId: assignment._id },
+    );
+
     res.json({ message: 'Assignment submitted successfully' });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -165,8 +174,8 @@ router.post('/:id/submit', auth, upload.array('files'), async (req, res) => {
 router.patch('/:id/grade/:submissionId', auth, teacherAuth, async (req, res) => {
   try {
     const { score, feedback } = req.body;
-    const assignment = await Assignment.findById(req.params.id);
-    
+    const assignment = await Assignment.findById(req.params.id).populate('class', 'name');
+
     if (!assignment || assignment.teacher.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: 'Access denied' });
     }
@@ -181,6 +190,23 @@ router.patch('/:id/grade/:submissionId', auth, teacherAuth, async (req, res) => 
     submission.gradedAt = new Date();
 
     await assignment.save();
+
+    await createActivity(
+      req.user._id,
+      'assignment_graded',
+      `Chấm bài: ${assignment.title}`,
+      { classId: assignment.class._id, assignmentId: assignment._id },
+    );
+
+    await createNotification(
+      submission.student,
+      req.user._id,
+      'Bài tập đã được chấm',
+      `Bài "${assignment.title}" đã được chấm điểm`,
+      'grade',
+      { classId: assignment.class._id, assignmentId: assignment._id },
+    );
+
     res.json({ message: 'Assignment graded successfully' });
   } catch (error) {
     res.status(500).json({ message: error.message });

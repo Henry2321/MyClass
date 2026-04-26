@@ -8,7 +8,15 @@ const activitySchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['assignment_created', 'assignment_submitted', 'lecture_published', 'class_created', 'student_joined'],
+    enum: [
+      'assignment_created',
+      'assignment_submitted',
+      'assignment_graded',
+      'lecture_created',
+      'lecture_published',
+      'class_created',
+      'student_joined'
+    ],
     required: true
   },
   description: {
