@@ -8,13 +8,17 @@ export default function ClassroomView(){
 
     <div
       style={{
-        width: "calc(100% + 80px)",
-        height: "calc(100% + 80px)",
-        margin: "-40px",
+        position: "fixed",
+        top: 0,
+        left: 0,
+        width: "100vw",
+        height: "100dvh",
+        margin: 0,
         padding: 0,
         overflow: "hidden",
         display: "flex",
-        backgroundColor: "#1a1b26"
+        backgroundColor: "#1a1b26",
+        zIndex: 500
       }}
     >
       {/* Audio elements for remote players */}
