@@ -161,6 +161,7 @@ app.use(errorHandler);
 
 // Socket.io
 const rooms = new Map(); // classId -> Map(socketId -> playerData)
+const activeScreenShares = new Map(); // classId -> { sharerSocketId, sharerName, sharerRole }
 const classroomSpawnPoints = [
   { x: 104, y: 600, direction: 0 },
   { x: 144, y: 600, direction: 0 },
@@ -240,6 +241,16 @@ io.on("connection", (socket) => {
     // Send current players in room to the new player
     const playersInRoom = Array.from(roomPlayers.values());
     socket.emit("current_players", playersInRoom);
+
+    // Nếu đang có screen share, thông báo cho player mới
+    const activeShare = activeScreenShares.get(classId);
+    if (activeShare) {
+      socket.emit("screen_share_started", activeShare);
+      // Yêu cầu sharer gửi offer cho player mới
+      io.to(activeShare.sharerSocketId).emit("screen_share_request_offer", {
+        viewerSocketId: socket.id,
+      });
+    }
 
     // Notify others about new player
     socket.to(`class_${classId}`).emit("player_joined", playerData);
@@ -356,7 +367,12 @@ io.on("connection", (socket) => {
   // Screen sharing events
   socket.on("start_screen_share", ({ classId, sharerName, sharerRole }) => {
     console.log(`${sharerName} started screen sharing in ${classId}`);
-    // Thông báo cho tất cả người khác trong phòng
+    // Lưu trạng thái share để player mới join biết
+    activeScreenShares.set(classId, {
+      sharerSocketId: socket.id,
+      sharerName,
+      sharerRole,
+    });
     socket.to(`class_${classId}`).emit("screen_share_started", {
       sharerSocketId: socket.id,
       sharerName,
@@ -366,7 +382,7 @@ io.on("connection", (socket) => {
 
   socket.on("stop_screen_share", ({ classId }) => {
     console.log(`Screen sharing stopped in ${classId}`);
-    // Thông báo cho tất cả người khác trong phòng
+    activeScreenShares.delete(classId);
     socket.to(`class_${classId}`).emit("screen_share_stopped", {
       sharerSocketId: socket.id,
     });
@@ -399,11 +415,18 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", () => {
     console.log("User disconnected:", socket.id);
-    // Find and remove player from any room
     rooms.forEach((players, classId) => {
       if (players.has(socket.id)) {
         players.delete(socket.id);
         io.to(`class_${classId}`).emit("player_left", socket.id);
+        // Nếu người disconnect là sharer thì xóa active share
+        const activeShare = activeScreenShares.get(classId);
+        if (activeShare && activeShare.sharerSocketId === socket.id) {
+          activeScreenShares.delete(classId);
+          io.to(`class_${classId}`).emit("screen_share_stopped", {
+            sharerSocketId: socket.id,
+          });
+        }
       }
     });
   });

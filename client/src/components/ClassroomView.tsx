@@ -18,7 +18,7 @@ export default function ClassroomView(){
         overflow: "hidden",
         display: "flex",
         backgroundColor: "#1a1b26",
-        zIndex: 500
+        zIndex: 1100
       }}
     >
       {/* Audio elements for remote players */}

@@ -216,6 +216,7 @@ export default function ClassCanvas() {
     const activeShare = screenShareRef.current
     const currentUserName = userNameRef.current
     const currentUserRole = userRoleRef.current
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
 
     if (activeShare.isSharing && activeShare.sharerName === currentUserName) {
       return 'Dừng chia sẻ'
@@ -225,7 +226,7 @@ export default function ClassCanvas() {
       return 'Chiếm quyền chia sẻ'
     }
 
-    return 'Chia sẻ màn hình'
+    return isMobile ? 'Chia sẻ camera' : 'Chia sẻ màn hình'
   }
 
   const syncSeatActionUi = () => {
@@ -482,19 +483,20 @@ export default function ClassCanvas() {
         // Dừng share
         stopScreenShare()
       } else {
+        // Kiểm tra hỗ trợ getDisplayMedia (không có trên mobile)
+        const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+        const supportsDisplayMedia = !isMobile && !!navigator.mediaDevices?.getDisplayMedia
+
         // Bắt đầu share
-        const stream = await navigator.mediaDevices.getDisplayMedia({
-          video: {
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-            frameRate: { ideal: 30 }
-          },
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            sampleRate: 44100
-          }
-        })
+        const stream = supportsDisplayMedia
+          ? await navigator.mediaDevices.getDisplayMedia({
+              video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
+              audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 44100 }
+            })
+          : await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+              audio: false
+            })
 
         console.log('Screen share stream obtained:', stream);
 
@@ -536,16 +538,17 @@ export default function ClassCanvas() {
       }
     } catch (error: any) {
       console.error('Lỗi khi share màn hình:', error)
-      
-      // Xử lý các loại lỗi cụ thể
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
       if (error?.name === 'NotAllowedError') {
-        alert('Bạn đã từ chối quyền chia sẻ màn hình. Vui lòng cho phép và thử lại!')
+        alert(isMobile
+          ? 'Bạn đã từ chối quyền truy cập camera. Vui lòng cho phép và thử lại!'
+          : 'Bạn đã từ chối quyền chia sẻ màn hình. Vui lòng cho phép và thử lại!')
       } else if (error?.name === 'NotSupportedError') {
-        alert('Trình duyệt không hỗ trợ chia sẻ màn hình!')
+        alert('Trình duyệt không hỗ trợ tính năng này!')
       } else if (error?.name === 'NotFoundError') {
-        alert('Không tìm thấy nguồn màn hình để chia sẻ!')
+        alert(isMobile ? 'Không tìm thấy camera!' : 'Không tìm thấy nguồn màn hình để chia sẻ!')
       } else {
-        alert('Không thể share màn hình. Vui lòng thử lại!')
+        alert(isMobile ? 'Không thể chia sẻ camera. Vui lòng thử lại!' : 'Không thể share màn hình. Vui lòng thử lại!')
       }
     }
   }
@@ -935,6 +938,13 @@ export default function ClassCanvas() {
         }
         screenShareRef.current = nextShareState
         setScreenShare(nextShareState)
+      }
+    })
+
+    // Khi player mới join và mình đang share, gửi offer cho họ
+    socket.on('screen_share_request_offer', ({ viewerSocketId }: { viewerSocketId: string }) => {
+      if (screenShareRef.current.isSharing && screenShareRef.current.stream) {
+        startScreenShareConnection(viewerSocketId)
       }
     })
 
@@ -1644,6 +1654,7 @@ export default function ClassCanvas() {
       socket.off('screen_share_offer')
       socket.off('screen_share_answer')
       socket.off('screen_share_ice_candidate')
+      socket.off('screen_share_request_offer')
       socket.off('player_left')
     }
 
@@ -2274,10 +2285,10 @@ export default function ClassCanvas() {
           position: "fixed",
           bottom: "20px",
           left: "20px",
+          zIndex: 1500,
           display: "flex",
           flexDirection: "column",
           gap: "10px",
-          zIndex: 1000
         }}>
           {/* Media Control Buttons - Đặt bên trên camera */}
           <div style={{
