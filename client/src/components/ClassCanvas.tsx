@@ -456,10 +456,10 @@ export default function ClassCanvas() {
       const currentUserName = userNameRef.current
       const currentUserRole = userRoleRef.current
       
-      // Kiểm tra browser support
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-        alert('Trình duyệt không hỗ trợ chia sẻ màn hình!');
-        return;
+      // Kiểm tra browser support cơ bản
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert('Trình duyệt không hỗ trợ media. Cần HTTPS!')
+        return
       }
 
       // Kiểm tra nếu giáo viên đang share thì học sinh không được share
