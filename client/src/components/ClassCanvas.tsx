@@ -2303,8 +2303,6 @@ export default function ClassCanvas() {
                 boxShadow: "0 4px 12px rgba(0,0,0,0.3)"
               }}
               title={isCamOn ? "Tắt camera" : "Bật camera"}
-              onMouseOver={(e) => e.currentTarget.style.transform = "scale(1.1)"}
-              onMouseOut={(e) => e.currentTarget.style.transform = "scale(1)"}
             >
               📹
             </button>
@@ -2327,11 +2325,40 @@ export default function ClassCanvas() {
                 boxShadow: "0 4px 12px rgba(0,0,0,0.3)"
               }}
               title={isMicOn ? "Tắt microphone" : "Bật microphone"}
-              onMouseOver={(e) => e.currentTarget.style.transform = "scale(1.1)"}
-              onMouseOut={(e) => e.currentTarget.style.transform = "scale(1)"}
             >
               🎤
             </button>
+
+            {/* Push-to-Talk button - dành cho mobile (không có phím G) */}
+            {isMicOn && (
+              <button
+                onPointerDown={() => setIsPushingToTalk(true)}
+                onPointerUp={() => setIsPushingToTalk(false)}
+                onPointerLeave={() => setIsPushingToTalk(false)}
+                style={{
+                  width: "45px",
+                  height: "45px",
+                  borderRadius: "50%",
+                  border: "2px solid",
+                  borderColor: isPushingToTalk ? "#4ade80" : "rgba(255,255,255,0.3)",
+                  backgroundColor: isPushingToTalk ? "#16a34a" : "rgba(15,23,42,0.85)",
+                  color: "white",
+                  fontSize: "20px",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transition: "all 0.1s",
+                  boxShadow: isPushingToTalk ? "0 0 16px rgba(74,222,128,0.6)" : "0 4px 12px rgba(0,0,0,0.3)",
+                  userSelect: "none",
+                  WebkitUserSelect: "none",
+                  touchAction: "none"
+                }}
+                title="Giữ để nói (PTT)"
+              >
+                🗣️
+              </button>
+            )}
           </div>
           
           {/* Camera Preview */}
