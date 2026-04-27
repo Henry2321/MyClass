@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import apiCall from '../utils/api';
 
 interface Submission {
   id: string;
@@ -13,9 +14,10 @@ interface Submission {
 }
 
 interface Assignment {
-  id: number;
+  id: number | string;
   title: string;
   class: string;
+  classId?: string;
   dueDate: string;
   description: string;
   maxGrade: number;
@@ -24,6 +26,11 @@ interface Assignment {
   status: 'active' | 'completed' | 'draft';
   createdAt: string;
   attachments: string[];
+}
+
+interface ClassOption {
+  _id: string;
+  name: string;
 }
 
 export default function Assignments() {
@@ -35,6 +42,17 @@ export default function Assignments() {
   const [showGradingModal, setShowGradingModal] = useState(false);
   const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
   const [filterStatus, setFilterStatus] = useState('all');
+  const [classes, setClasses] = useState<ClassOption[]>([]);
+  const [createForm, setCreateForm] = useState({
+    title: '',
+    classId: '',
+    dueDate: '',
+    maxGrade: 10,
+    description: '',
+  });
+  const [createFiles, setCreateFiles] = useState<FileList | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
 
   const [assignmentsList, setAssignmentsList] = useState<Assignment[]>([
     {
@@ -107,6 +125,79 @@ export default function Assignments() {
       submissions: []
     }
   ]);
+
+  useEffect(() => {
+    if (user?.role === 'teacher') {
+      apiCall('/api/classes').then(r => r.json()).then(data => {
+        if (Array.isArray(data)) setClasses(data);
+      }).catch(() => {});
+    }
+  }, [user]);
+
+  const handleCreateAssignment = async (publish: boolean) => {
+    if (!createForm.title.trim()) { setCreateError('Vui lòng nhập tiêu đề bài tập'); return; }
+    if (!createForm.classId) { setCreateError('Vui lòng chọn lớp học'); return; }
+    if (!createForm.dueDate) { setCreateError('Vui lòng chọn hạn nộp'); return; }
+
+    setCreating(true);
+    setCreateError('');
+    try {
+      const formData = new FormData();
+      formData.append('title', createForm.title);
+      formData.append('classId', createForm.classId);
+      formData.append('dueDate', createForm.dueDate);
+      formData.append('maxScore', String(createForm.maxGrade));
+      formData.append('description', createForm.description);
+      if (createFiles) {
+        Array.from(createFiles).forEach(f => formData.append('files', f));
+      }
+
+      const token = localStorage.getItem('token');
+      const { API_BASE_URL } = await import('../utils/api');
+      const res = await fetch(`${API_BASE_URL}/api/assignments`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        setCreateError(err.message || 'Tạo bài tập thất bại');
+        return;
+      }
+
+      const newAssignment = await res.json();
+
+      if (publish) {
+        await apiCall(`/api/assignments/${newAssignment._id}/publish`, { method: 'PATCH' });
+      }
+
+      const className = classes.find(c => c._id === createForm.classId)?.name || '';
+      setAssignmentsList(prev => [{
+        id: newAssignment._id,
+        title: newAssignment.title,
+        class: className,
+        classId: createForm.classId,
+        dueDate: new Date(newAssignment.dueDate).toISOString().split('T')[0],
+        description: newAssignment.description || '',
+        maxGrade: newAssignment.maxScore || 10,
+        submissions: [],
+        totalStudents: 0,
+        status: publish ? 'active' : 'draft',
+        createdAt: new Date().toISOString().split('T')[0],
+        attachments: [],
+      }, ...prev]);
+
+      setShowCreateModal(false);
+      setCreateForm({ title: '', classId: '', dueDate: '', maxGrade: 10, description: '' });
+      setCreateFiles(null);
+      alert(publish ? '📝 Tạo và đăng bài tập thành công!' : '📝 Lưu nháp thành công!');
+    } catch {
+      setCreateError('Có lỗi xảy ra, vui lòng thử lại');
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const handleQuickAction = (action: string) => {
     setShowQuickActions(false);
@@ -862,47 +953,77 @@ export default function Assignments() {
                 <div className="form-row">
                   <div className="form-group">
                     <label>Tiêu đề bài tập</label>
-                    <input type="text" placeholder="Nhập tiêu đề bài tập" />
+                    <input
+                      type="text"
+                      placeholder="Nhập tiêu đề bài tập"
+                      value={createForm.title}
+                      onChange={e => setCreateForm(f => ({ ...f, title: e.target.value }))}
+                    />
                   </div>
                   <div className="form-group">
                     <label>Lớp học</label>
-                    <select>
-                      <option>Chọn lớp học</option>
-                      <option>React Nâng cao</option>
-                      <option>Node.js Backend</option>
-                      <option>Database Design</option>
+                    <select
+                      value={createForm.classId}
+                      onChange={e => setCreateForm(f => ({ ...f, classId: e.target.value }))}
+                    >
+                      <option value="">Chọn lớp học</option>
+                      {classes.map(c => (
+                        <option key={c._id} value={c._id}>{c.name}</option>
+                      ))}
                     </select>
                   </div>
                 </div>
                 <div className="form-row">
                   <div className="form-group">
                     <label>Hạn nộp</label>
-                    <input type="datetime-local" />
+                    <input
+                      type="datetime-local"
+                      value={createForm.dueDate}
+                      onChange={e => setCreateForm(f => ({ ...f, dueDate: e.target.value }))}
+                    />
                   </div>
                   <div className="form-group">
                     <label>Điểm tối đa</label>
-                    <input type="number" placeholder="10" min="1" max="100" />
+                    <input
+                      type="number"
+                      placeholder="10"
+                      min="1"
+                      max="100"
+                      value={createForm.maxGrade}
+                      onChange={e => setCreateForm(f => ({ ...f, maxGrade: Number(e.target.value) }))}
+                    />
                   </div>
                 </div>
                 <div className="form-group">
                   <label>Mô tả bài tập</label>
-                  <textarea placeholder="Mô tả chi tiết yêu cầu bài tập" rows={4}></textarea>
+                  <textarea
+                    placeholder="Mô tả chi tiết yêu cầu bài tập"
+                    rows={4}
+                    value={createForm.description}
+                    onChange={e => setCreateForm(f => ({ ...f, description: e.target.value }))}
+                  ></textarea>
                 </div>
                 <div className="form-group">
                   <label>Tài liệu đính kèm</label>
                   <div className="file-upload-area">
-                    <input type="file" multiple accept=".pdf,.doc,.docx,.zip,.rar" />
-                    <div className="file-upload-label">
-                      Chọn tập tin hoặc kéo thả vào đây
-                    </div>
+                    <input
+                      type="file"
+                      multiple
+                      accept=".pdf,.doc,.docx,.zip,.rar"
+                      onChange={e => setCreateFiles(e.target.files)}
+                    />
+                    <div className="file-upload-label">Chọn tập tin hoặc kéo thả vào đây</div>
                     <p className="file-upload-note">Hỗ trợ: PDF, Word, Archive (Tối đa 50MB)</p>
                   </div>
                 </div>
+                {createError && <p style={{ color: 'red', marginTop: 8 }}>{createError}</p>}
               </div>
               <div className="form-actions">
-                <button className="btn-secondary" onClick={() => setShowCreateModal(false)}>Hủy</button>
-                <button className="btn-outline">Lưu nháp</button>
-                <button className="btn-primary">📝 Tạo bài tập</button>
+                <button className="btn-secondary" onClick={() => setShowCreateModal(false)} disabled={creating}>Hủy</button>
+                <button className="btn-outline" onClick={() => handleCreateAssignment(false)} disabled={creating}>Lưu nháp</button>
+                <button className="btn-primary" onClick={() => handleCreateAssignment(true)} disabled={creating}>
+                  {creating ? 'Đang tạo...' : '📝 Tạo bài tập'}
+                </button>
               </div>
             </div>
           </div>

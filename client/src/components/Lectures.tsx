@@ -1,404 +1,400 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { apiCall, getApiUrl } from '../utils/api';
 
 interface LectureFile {
-  id: string;
+  _id: string;
+  filename: string;
+  originalName: string;
+  size: number;
+}
+
+interface LectureClass {
+  _id: string;
   name: string;
-  type: string;
-  size: string;
-  uploadDate: string;
 }
 
 interface Lecture {
-  id: number;
+  _id: string;
   title: string;
-  class: string;
-  date: string;
-  duration: string;
-  status: 'published' | 'draft';
-  description?: string;
+  content: string;
+  class: LectureClass;
+  teacher?: { name: string };
   files: LectureFile[];
-  views: number;
-  downloads: number;
+  videoUrl?: string;
+  isPublished: boolean;
+  publishedAt?: string;
+  createdAt: string;
 }
+
+interface MyClass {
+  _id: string;
+  name: string;
+}
+
+const formatSize = (bytes: number) => {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const getFileIcon = (name: string) => {
+  const ext = name.split('.').pop()?.toLowerCase();
+  if (ext === 'pdf') return '📄';
+  if (['ppt', 'pptx'].includes(ext || '')) return '📊';
+  if (['doc', 'docx'].includes(ext || '')) return '📝';
+  if (['zip', 'rar'].includes(ext || '')) return '📦';
+  if (['mp4', 'avi', 'mov'].includes(ext || '')) return '🎥';
+  return '📁';
+};
 
 export default function Lectures() {
   const { user } = useAuth();
-  const [showQuickActions, setShowQuickActions] = useState(false);
+  const isTeacher = user?.role === 'teacher';
+
+  const [lectures, setLectures] = useState<Lecture[]>([]);
+  const [classes, setClasses] = useState<MyClass[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [searchText, setSearchText] = useState('');
+
+  // Modals
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedLecture, setSelectedLecture] = useState<Lecture | null>(null);
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [lecturesList, setLecturesList] = useState<Lecture[]>([
-    { 
-      id: 1, 
-      title: 'Giới thiệu React Hooks', 
-      class: 'React Nâng cao',
-      date: '2024-03-10',
-      duration: '45 phút',
-      status: 'published',
-      description: 'Tìm hiểu về useState, useEffect và các hooks cơ bản trong React',
-      views: 156,
-      downloads: 23,
-      files: [
-        { id: '1', name: 'React-Hooks-Slides.pptx', type: 'PowerPoint', size: '2.5 MB', uploadDate: '2024-03-10' },
-        { id: '2', name: 'React-Hooks-Examples.zip', type: 'Archive', size: '1.2 MB', uploadDate: '2024-03-10' },
-        { id: '3', name: 'React-Hooks-Notes.pdf', type: 'PDF', size: '850 KB', uploadDate: '2024-03-10' }
-      ]
-    },
-    { 
-      id: 2, 
-      title: 'State Management với Redux', 
-      class: 'React Nâng cao',
-      date: '2024-03-12',
-      duration: '60 phút',
-      status: 'draft',
-      description: 'Quản lý state phức tạp với Redux Toolkit',
-      views: 0,
-      downloads: 0,
-      files: [
-        { id: '4', name: 'Redux-Basics.pptx', type: 'PowerPoint', size: '3.1 MB', uploadDate: '2024-03-12' },
-        { id: '5', name: 'Redux-Project.zip', type: 'Archive', size: '5.2 MB', uploadDate: '2024-03-12' }
-      ]
-    },
-    { 
-      id: 3, 
-      title: 'API Integration', 
-      class: 'Node.js Backend',
-      date: '2024-03-15',
-      duration: '50 phút',
-      status: 'published',
-      description: 'Tích hợp API RESTful và xử lý dữ liệu',
-      views: 89,
-      downloads: 15,
-      files: [
-        { id: '6', name: 'API-Integration.pdf', type: 'PDF', size: '1.8 MB', uploadDate: '2024-03-15' },
-        { id: '7', name: 'API-Examples.js', type: 'JavaScript', size: '45 KB', uploadDate: '2024-03-15' }
-      ]
-    }
-  ]);
 
-  const handlePublishLecture = (lectureId: number) => {
-    if (confirm('Bạn có chắc muốn xuất bản bài giảng này?')) {
-      setLecturesList(prev => prev.map(lecture => 
-        lecture.id === lectureId 
-          ? { ...lecture, status: 'published' as const }
-          : lecture
-      ));
-      alert('Bài giảng đã được xuất bản thành công!');
+  // Create/Edit form state
+  const [formTitle, setFormTitle] = useState('');
+  const [formContent, setFormContent] = useState('');
+  const [formClassId, setFormClassId] = useState('');
+  const [formVideoUrl, setFormVideoUrl] = useState('');
+  const [formFiles, setFormFiles] = useState<FileList | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const editFileInputRef = useRef<HTMLInputElement>(null);
+
+  const fetchLectures = async () => {
+    try {
+      setError('');
+      const res = await apiCall('/api/lectures');
+      if (!res.ok) throw new Error('Không thể tải bài giảng');
+      const data = await res.json();
+      setLectures(data);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleUnpublishLecture = (lectureId: number) => {
-    if (confirm('Bạn có chắc muốn chuyển bài giảng về bản nháp?')) {
-      setLecturesList(prev => prev.map(lecture => 
-        lecture.id === lectureId 
-          ? { ...lecture, status: 'draft' as const }
-          : lecture
-      ));
-      alert('Bài giảng đã chuyển về bản nháp!');
+  const fetchClasses = async () => {
+    try {
+      const res = await apiCall('/api/classes');
+      if (!res.ok) return;
+      const data = await res.json();
+      setClasses(data);
+    } catch {}
+  };
+
+  useEffect(() => {
+    fetchLectures();
+    if (isTeacher) fetchClasses();
+  }, []);
+
+  const handleCreate = async (publish: boolean) => {
+    if (!formTitle.trim() || !formClassId) {
+      alert('Vui lòng nhập tiêu đề và chọn lớp học');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const fd = new FormData();
+      fd.append('title', formTitle.trim());
+      fd.append('content', formContent.trim());
+      fd.append('classId', formClassId);
+      fd.append('videoUrl', formVideoUrl.trim());
+      if (formFiles) {
+        Array.from(formFiles).forEach(f => fd.append('files', f));
+      }
+
+      const token = localStorage.getItem('token');
+      const res = await fetch(getApiUrl('/api/lectures'), {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.message || 'Lỗi tạo bài giảng');
+      }
+      const created: Lecture = await res.json();
+
+      if (publish) {
+        await apiCall(`/api/lectures/${created._id}/publish`, { method: 'PATCH' });
+        created.isPublished = true;
+      }
+
+      setLectures(prev => [created, ...prev]);
+      setShowCreateModal(false);
+      resetForm();
+      alert(publish ? 'Bài giảng đã được tạo và xuất bản!' : 'Bài giảng đã lưu nháp!');
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const handleQuickAction = (action: string) => {
-    setShowQuickActions(false);
-    
-    switch(action) {
-      case 'create-lecture':
-        setShowCreateModal(true);
-        break;
-      case 'upload-files':
-        document.getElementById('file-upload')?.click();
-        break;
-      case 'view-analytics':
-        alert('Chức năng phân tích đang được phát triển');
-        break;
-      case 'export-data':
-        alert('Chức năng xuất dữ liệu đang được phát triển');
-        break;
-      case 'settings':
-        alert('Chức năng cài đặt đang được phát triển');
-        break;
+  const handleUpdate = async (publish?: boolean) => {
+    if (!selectedLecture) return;
+    setSubmitting(true);
+    try {
+      const fd = new FormData();
+      fd.append('title', formTitle.trim());
+      fd.append('content', formContent.trim());
+      fd.append('videoUrl', formVideoUrl.trim());
+      if (publish !== undefined) fd.append('isPublished', String(publish));
+      if (editFileInputRef.current?.files?.length) {
+        Array.from(editFileInputRef.current.files).forEach(f => fd.append('files', f));
+      }
+
+      const token = localStorage.getItem('token');
+      const res = await fetch(getApiUrl(`/api/lectures/${selectedLecture._id}`), {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.message || 'Lỗi cập nhật');
+      }
+      const updated: Lecture = await res.json();
+      setLectures(prev => prev.map(l => l._id === updated._id ? updated : l));
+      setShowEditModal(false);
+      alert('Cập nhật thành công!');
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const handleViewLecture = (lecture: Lecture) => {
+  const handlePublishToggle = async (lecture: Lecture) => {
+    try {
+      if (!lecture.isPublished) {
+        const res = await apiCall(`/api/lectures/${lecture._id}/publish`, { method: 'PATCH' });
+        if (!res.ok) throw new Error('Lỗi xuất bản');
+        setLectures(prev => prev.map(l => l._id === lecture._id ? { ...l, isPublished: true } : l));
+        alert('Đã xuất bản!');
+      } else {
+        const token = localStorage.getItem('token');
+        const fd = new FormData();
+        fd.append('isPublished', 'false');
+        const res = await fetch(getApiUrl(`/api/lectures/${lecture._id}`), {
+          method: 'PATCH',
+          headers: { Authorization: `Bearer ${token}` },
+          body: fd,
+        });
+        if (!res.ok) throw new Error('Lỗi');
+        setLectures(prev => prev.map(l => l._id === lecture._id ? { ...l, isPublished: false } : l));
+        alert('Đã chuyển về bản nháp!');
+      }
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleDelete = async (lecture: Lecture) => {
+    if (!confirm(`Xóa bài giảng "${lecture.title}"?`)) return;
+    try {
+      const res = await apiCall(`/api/lectures/${lecture._id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Lỗi xóa');
+      setLectures(prev => prev.filter(l => l._id !== lecture._id));
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleDownloadFile = (lectureId: string, filename: string, originalName: string) => {
+    const token = localStorage.getItem('token');
+    const url = getApiUrl(`/api/lectures/${lectureId}/files/${filename}`);
+    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+      .then(res => {
+        if (!res.ok) throw new Error('File không tồn tại');
+        return res.blob();
+      })
+      .then(blob => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = originalName;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      })
+      .catch(() => alert('Không thể tải file. File có thể chưa được upload lên server.'));
+  };
+
+  const openEdit = (lecture: Lecture) => {
     setSelectedLecture(lecture);
-    setShowViewModal(true);
-  };
-
-  const handleEditLecture = (lecture: Lecture) => {
-    setSelectedLecture(lecture);
+    setFormTitle(lecture.title);
+    setFormContent(lecture.content || '');
+    setFormVideoUrl(lecture.videoUrl || '');
     setShowEditModal(true);
   };
 
-  const getFileIcon = (type: string) => {
-    switch(type.toLowerCase()) {
-      case 'pdf': return '📄';
-      case 'powerpoint': return '📊';
-      case 'word': return '📝';
-      case 'archive': return '📦';
-      case 'javascript': return '💻';
-      case 'video': return '🎥';
-      default: return '📁';
-    }
+  const resetForm = () => {
+    setFormTitle('');
+    setFormContent('');
+    setFormClassId('');
+    setFormVideoUrl('');
+    setFormFiles(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const filteredLectures = lecturesList.filter(lecture => {
-    if (filterStatus === 'all') return true;
-    if (filterStatus === 'published') return lecture.status === 'published';
-    if (filterStatus === 'draft') return lecture.status === 'draft';
-    return true;
+  const filteredLectures = lectures.filter(l => {
+    const matchSearch = l.title.toLowerCase().includes(searchText.toLowerCase());
+    if (isTeacher) {
+      if (filterStatus === 'published') return l.isPublished && matchSearch;
+      if (filterStatus === 'draft') return !l.isPublished && matchSearch;
+      return matchSearch;
+    }
+    return matchSearch;
   });
+
+  if (loading) return <div className="loading-container"><div className="loading-spinner"></div><p>Đang tải...</p></div>;
 
   return (
     <>
-      {user?.role === 'teacher' ? (
-        // Giao diện cho giáo viên
+      {isTeacher ? (
         <>
           <div className="lectures-header-main">
             <div className="lectures-title-section">
               <h1 className="title">Bài giảng 📖</h1>
               <p className="subtitle">Quản lý và chia sẻ tài liệu bài giảng</p>
             </div>
-            
-            <div className="header-actions">
-              <button 
-                className="quick-action-btn"
-                onClick={() => setShowQuickActions(!showQuickActions)}
-              >
-                ⚡ Thao tác nhanh
-              </button>
-              {showQuickActions && (
-                <div className="quick-actions-dropdown">
-                  <button onClick={() => handleQuickAction('create-lecture')}>➕ Tạo bài giảng mới</button>
-                  <button onClick={() => handleQuickAction('upload-files')}>📁 Upload tài liệu</button>
-                  <button onClick={() => handleQuickAction('view-analytics')}>📊 Xem thống kê</button>
-                  <button onClick={() => handleQuickAction('export-data')}>📤 Xuất dữ liệu</button>
-                  <button onClick={() => handleQuickAction('settings')}>⚙️ Cài đặt</button>
-                </div>
-              )}
-            </div>
+            <button className="btn-primary" onClick={() => { resetForm(); setShowCreateModal(true); }}>
+              + Tạo bài giảng
+            </button>
           </div>
-          
+
+          {error && <div style={{ color: '#ef4444', marginBottom: 12 }}>{error}</div>}
+
           <div className="lectures-controls">
-            <button className="btn-primary" onClick={() => setShowCreateModal(true)}>+ Tạo bài giảng</button>
-            <input type="file" id="file-upload" multiple accept=".pdf,.ppt,.pptx,.doc,.docx,.zip,.rar" style={{display: 'none'}} />
             <div className="filter-tabs">
-              <button 
-                className={`tab ${filterStatus === 'all' ? 'active' : ''}`}
-                onClick={() => setFilterStatus('all')}
-              >
-                Tất cả ({lecturesList.length})
-              </button>
-              <button 
-                className={`tab ${filterStatus === 'published' ? 'active' : ''}`}
-                onClick={() => setFilterStatus('published')}
-              >
-                Đã xuất bản ({lecturesList.filter(l => l.status === 'published').length})
-              </button>
-              <button 
-                className={`tab ${filterStatus === 'draft' ? 'active' : ''}`}
-                onClick={() => setFilterStatus('draft')}
-              >
-                Bản nháp ({lecturesList.filter(l => l.status === 'draft').length})
-              </button>
+              {['all', 'published', 'draft'].map(s => (
+                <button key={s} className={`tab ${filterStatus === s ? 'active' : ''}`} onClick={() => setFilterStatus(s)}>
+                  {s === 'all' ? `Tất cả (${lectures.length})` : s === 'published' ? `Đã xuất bản (${lectures.filter(l => l.isPublished).length})` : `Bản nháp (${lectures.filter(l => !l.isPublished).length})`}
+                </button>
+              ))}
             </div>
           </div>
 
-          <div className="lectures-grid">
-            {filteredLectures.map(lecture => (
-              <div key={lecture.id} className="lecture-card">
-                <div className="lecture-header">
-                  <h3>{lecture.title}</h3>
-                  <span className={`status-badge ${lecture.status}`}>
-                    {lecture.status === 'published' ? 'Đã xuất bản' : 'Bản nháp'}
-                  </span>
-                </div>
-                
-                <div className="lecture-meta">
-                  <div className="meta-item">
-                    <span>{lecture.class}</span>
-                  </div>
-                  <div className="meta-item">
-                    <span>{lecture.date}</span>
-                  </div>
-                  <div className="meta-item">
-                    <span>⏱️ {lecture.duration}</span>
-                  </div>
-                </div>
-
-                <div className="lecture-description">
-                  <p>{lecture.description}</p>
-                </div>
-
-                <div className="lecture-files">
-                  <h4>Tài liệu ({lecture.files.length})</h4>
-                  <div className="files-preview">
-                    {lecture.files.slice(0, 3).map(file => (
-                      <div key={file.id} className="file-item">
-                        <span className="file-icon">{getFileIcon(file.type)}</span>
-                        <span className="file-name">{file.name}</span>
-                        <span className="file-size">{file.size}</span>
-                      </div>
-                    ))}
-                    {lecture.files.length > 3 && (
-                      <div className="more-files">+{lecture.files.length - 3} file khác</div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="lecture-stats">
-                  <div className="stat-item">
-                    <span>{lecture.views} lượt xem</span>
-                  </div>
-                  <div className="stat-item">
-                    <span>{lecture.downloads} lượt tải</span>
-                  </div>
-                </div>
-
-                <div className="lecture-actions">
-                  <button 
-                    className="btn-outline"
-                    onClick={() => handleViewLecture(lecture)}
-                  >
-                    Xem
-                  </button>
-                  <button 
-                    className="btn-outline"
-                    onClick={() => handleEditLecture(lecture)}
-                  >
-                    Chỉnh sửa
-                  </button>
-                  {lecture.status === 'draft' ? (
-                    <button 
-                      className="btn-primary"
-                      onClick={() => handlePublishLecture(lecture.id)}
-                    >
-                      Xuất bản
-                    </button>
-                  ) : (
-                    <button 
-                      className="btn-outline"
-                      onClick={() => handleUnpublishLecture(lecture.id)}
-                    >
-                      Chuyển về nháp
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </>
-      ) : (
-        // Giao diện cho sinh viên
-        <>
-          <div className="student-lectures-header">
-            <div className="lectures-title-section">
-              <h1 className="title">Bài giảng 📖</h1>
-              <p className="subtitle">Truy cập và tải về tài liệu bài giảng</p>
+          {filteredLectures.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon">📖</div>
+              <h3>Chưa có bài giảng nào</h3>
+              <button className="btn-primary" onClick={() => { resetForm(); setShowCreateModal(true); }}>+ Tạo bài giảng đầu tiên</button>
             </div>
-          </div>
-          
-          <div className="student-lectures-controls">
-            <div className="search-bar">
-              <input 
-                type="text" 
-                placeholder="Tìm kiếm bài giảng..."
-                className="search-input"
-              />
-              <button className="search-btn">🔍</button>
-            </div>
-            <div className="filter-tabs">
-              <button 
-                className={`tab ${filterStatus === 'all' ? 'active' : ''}`}
-                onClick={() => setFilterStatus('all')}
-              >
-                Tất cả ({lecturesList.filter(l => l.status === 'published').length})
-              </button>
-              <button 
-                className={`tab ${filterStatus === 'recent' ? 'active' : ''}`}
-                onClick={() => setFilterStatus('recent')}
-              >
-                Gần đây
-              </button>
-              <button 
-                className={`tab ${filterStatus === 'downloaded' ? 'active' : ''}`}
-                onClick={() => setFilterStatus('downloaded')}
-              >
-                Đã tải
-              </button>
-            </div>
-          </div>
-
-          <div className="student-lectures-grid">
-            {lecturesList.filter(l => l.status === 'published').map(lecture => (
-              <div key={lecture.id} className="student-lecture-card">
-                <div className="lecture-thumbnail">
-                  <div className="thumbnail-placeholder">
-                    📖
-                  </div>
-                </div>
-                
-                <div className="lecture-content">
+          ) : (
+            <div className="lectures-grid">
+              {filteredLectures.map(lecture => (
+                <div key={lecture._id} className="lecture-card">
                   <div className="lecture-header">
                     <h3>{lecture.title}</h3>
-                    <span className="lecture-class">📚 {lecture.class}</span>
+                    <span className={`status-badge ${lecture.isPublished ? 'published' : 'draft'}`}>
+                      {lecture.isPublished ? 'Đã xuất bản' : 'Bản nháp'}
+                    </span>
                   </div>
-                  
-                  <div className="lecture-description">
-                    <p>{lecture.description}</p>
-                  </div>
-                  
                   <div className="lecture-meta">
-                    <span>📅 {lecture.date}</span>
+                    <span>📚 {lecture.class?.name}</span>
+                    <span>📅 {new Date(lecture.createdAt).toLocaleDateString('vi-VN')}</span>
                     <span>📁 {lecture.files.length} tài liệu</span>
-                    <span>👁️ {lecture.views} lượt xem</span>
                   </div>
-                  
-                  <div className="student-lecture-actions">
-                    <button 
-                      className="btn-primary"
-                      onClick={() => {
-                        // Tăng lượt xem
-                        setLecturesList(prev => prev.map(l => 
-                          l.id === lecture.id ? { ...l, views: l.views + 1 } : l
-                        ));
-                        handleViewLecture(lecture);
-                      }}
-                    >
-                      👁️ Xem bài giảng
+                  {lecture.content && <div className="lecture-description"><p>{lecture.content}</p></div>}
+                  {lecture.videoUrl && (
+                    <div style={{ marginBottom: 8 }}>
+                      <a href={lecture.videoUrl} target="_blank" rel="noreferrer" style={{ color: '#4ade80', fontSize: 13 }}>🎥 Xem video</a>
+                    </div>
+                  )}
+                  <div className="lecture-files">
+                    {lecture.files.slice(0, 3).map(f => (
+                      <div key={f._id} className="file-item">
+                        <span>{getFileIcon(f.originalName)}</span>
+                        <span className="file-name">{f.originalName}</span>
+                        <span className="file-size">{formatSize(f.size)}</span>
+                      </div>
+                    ))}
+                    {lecture.files.length > 3 && <div className="more-files">+{lecture.files.length - 3} file khác</div>}
+                  </div>
+                  <div className="lecture-actions">
+                    <button className="btn-outline" onClick={() => { setSelectedLecture(lecture); setShowViewModal(true); }}>Xem</button>
+                    <button className="btn-outline" onClick={() => openEdit(lecture)}>Chỉnh sửa</button>
+                    <button className="btn-primary" onClick={() => handlePublishToggle(lecture)}>
+                      {lecture.isPublished ? 'Về nháp' : 'Xuất bản'}
                     </button>
-                    <button 
-                      className="btn-outline"
-                      onClick={() => {
-                        // Tăng lượt tải
-                        setLecturesList(prev => prev.map(l => 
-                          l.id === lecture.id ? { ...l, downloads: l.downloads + 1 } : l
-                        ));
-                        alert(`Đang tải tài liệu bài giảng: ${lecture.title}\n\nFile bao gồm: ${lecture.files.map(f => f.name).join(', ')}`);
-                      }}
-                    >
-                      📥 Tải tài liệu
-                    </button>
+                    <button className="btn-outline" style={{ color: '#ef4444' }} onClick={() => handleDelete(lecture)}>Xóa</button>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </>
-      )}
+      ) : (
+        <>
+          <div className="student-lectures-header">
+            <h1 className="title">Bài giảng 📖</h1>
+            <p className="subtitle">Truy cập và tải về tài liệu bài giảng</p>
+          </div>
 
-      {filteredLectures.length === 0 && (
-        <div className="empty-state">
-          <div className="empty-icon">📖</div>
-          <h3>Chưa có bài giảng nào</h3>
-          <p>Tạo bài giảng đầu tiên để bắt đầu chia sẻ kiến thức</p>
-          <button className="btn-primary" onClick={() => setShowCreateModal(true)}>
-            + Tạo bài giảng đầu tiên
-          </button>
-        </div>
+          <div className="student-lectures-controls">
+            <div className="search-bar">
+              <input type="text" placeholder="Tìm kiếm bài giảng..." className="search-input"
+                value={searchText} onChange={e => setSearchText(e.target.value)} />
+            </div>
+          </div>
+
+          {error && <div style={{ color: '#ef4444', margin: '12px 0' }}>{error}</div>}
+
+          {filteredLectures.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon">📖</div>
+              <h3>Chưa có bài giảng nào</h3>
+              <p>Bài giảng sẽ xuất hiện khi giáo viên xuất bản</p>
+            </div>
+          ) : (
+            <div className="student-lectures-grid">
+              {filteredLectures.map(lecture => (
+                <div key={lecture._id} className="student-lecture-card">
+                  <div className="lecture-thumbnail"><div className="thumbnail-placeholder">📖</div></div>
+                  <div className="lecture-content">
+                    <div className="lecture-header">
+                      <h3>{lecture.title}</h3>
+                      <span className="lecture-class">📚 {lecture.class?.name}</span>
+                    </div>
+                    {lecture.content && <div className="lecture-description"><p>{lecture.content}</p></div>}
+                    <div className="lecture-meta">
+                      <span>📅 {new Date(lecture.createdAt).toLocaleDateString('vi-VN')}</span>
+                      <span>📁 {lecture.files.length} tài liệu</span>
+                      {lecture.teacher && <span>👨‍🏫 {lecture.teacher.name}</span>}
+                    </div>
+                    {lecture.videoUrl && (
+                      <a href={lecture.videoUrl} target="_blank" rel="noreferrer"
+                        style={{ display: 'inline-block', marginBottom: 8, color: '#4ade80', fontSize: 13 }}>
+                        🎥 Xem video bài giảng
+                      </a>
+                    )}
+                    <div className="student-lecture-actions">
+                      <button className="btn-primary" onClick={() => { setSelectedLecture(lecture); setShowViewModal(true); }}>
+                        👁️ Xem tài liệu
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {/* Modal Xem bài giảng */}
@@ -406,176 +402,61 @@ export default function Lectures() {
         <div className="modal-overlay" onClick={() => setShowViewModal(false)}>
           <div className="modal-content large" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>👁️ {selectedLecture.title}</h2>
+              <h2>📖 {selectedLecture.title}</h2>
               <button className="modal-close" onClick={() => setShowViewModal(false)}>✕</button>
             </div>
             <div className="modal-body">
-              <div className="lecture-details">
-                <div className="detail-section">
-                  <h4>📋 Thông tin bài giảng</h4>
-                  <div className="detail-grid">
-                    <div className="detail-item">
-                      <strong>Lớp học:</strong> {selectedLecture.class}
-                    </div>
-                    <div className="detail-item">
-                      <strong>Ngày tạo:</strong> {selectedLecture.date}
-                    </div>
-                    <div className="detail-item">
-                      <strong>Thời lượng:</strong> {selectedLecture.duration}
-                    </div>
-                    <div className="detail-item">
-                      <strong>Trạng thái:</strong> 
-                      <span className={`status-badge ${selectedLecture.status}`}>
-                        {selectedLecture.status === 'published' ? 'Đã xuất bản' : 'Bản nháp'}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="description-section">
-                    <strong>Mô tả:</strong>
-                    <p>{selectedLecture.description}</p>
-                  </div>
+              <div className="detail-section">
+                <div className="detail-grid">
+                  <div className="detail-item"><strong>Lớp:</strong> {selectedLecture.class?.name}</div>
+                  <div className="detail-item"><strong>Ngày tạo:</strong> {new Date(selectedLecture.createdAt).toLocaleDateString('vi-VN')}</div>
+                  {isTeacher && <div className="detail-item"><strong>Trạng thái:</strong> {selectedLecture.isPublished ? '✅ Đã xuất bản' : '📝 Bản nháp'}</div>}
                 </div>
+                {selectedLecture.content && (
+                  <div style={{ marginTop: 12 }}>
+                    <strong>Nội dung:</strong>
+                    <p style={{ marginTop: 6, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{selectedLecture.content}</p>
+                  </div>
+                )}
+                {selectedLecture.videoUrl && (
+                  <div style={{ marginTop: 12 }}>
+                    <strong>Video:</strong>{' '}
+                    <a href={selectedLecture.videoUrl} target="_blank" rel="noreferrer" style={{ color: '#4ade80' }}>
+                      🎥 {selectedLecture.videoUrl}
+                    </a>
+                  </div>
+                )}
+              </div>
 
-                <div className="detail-section">
-                  <h4>📁 Tài liệu đính kèm ({selectedLecture.files.length})</h4>
+              <div className="detail-section" style={{ marginTop: 20 }}>
+                <h4>📁 Tài liệu đính kèm ({selectedLecture.files.length})</h4>
+                {selectedLecture.files.length === 0 ? (
+                  <p style={{ color: '#94a3b8' }}>Không có tài liệu</p>
+                ) : (
                   <div className="files-list">
-                    {selectedLecture.files.map(file => (
-                      <div key={file.id} className="file-detail-item">
+                    {selectedLecture.files.map(f => (
+                      <div key={f._id} className="file-detail-item">
                         <div className="file-info">
-                          <span className="file-icon-large">{getFileIcon(file.type)}</span>
+                          <span className="file-icon-large">{getFileIcon(f.originalName)}</span>
                           <div className="file-details">
-                            <h5>{file.name}</h5>
-                            <p>{file.type} • {file.size} • Tải lên {file.uploadDate}</p>
+                            <h5>{f.originalName}</h5>
+                            <p>{formatSize(f.size)}</p>
                           </div>
                         </div>
-                        <div className="file-actions">
-                          <button className="btn-sm">👁️ Xem</button>
-                          <button className="btn-sm">📥 Tải về</button>
-                        </div>
+                        <button className="btn-sm" onClick={() => handleDownloadFile(selectedLecture._id, f.filename, f.originalName)}>
+                          📥 Tải về
+                        </button>
                       </div>
                     ))}
                   </div>
-                </div>
-
-                <div className="detail-section">
-                  <h4>📊 Thống kê</h4>
-                  <div className="stats-grid">
-                    <div className="stat-card">
-                      <div className="stat-number">{selectedLecture.views}</div>
-                      <div className="stat-label">Lượt xem</div>
-                    </div>
-                    <div className="stat-card">
-                      <div className="stat-number">{selectedLecture.downloads}</div>
-                      <div className="stat-label">Lượt tải</div>
-                    </div>
-                    <div className="stat-card">
-                      <div className="stat-number">{selectedLecture.files.length}</div>
-                      <div className="stat-label">Tài liệu</div>
-                    </div>
-                  </div>
-                </div>
+                )}
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal Chỉnh sửa bài giảng */}
-      {showEditModal && selectedLecture && (
-        <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
-          <div className="modal-content large" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>✏️ Chỉnh sửa bài giảng</h2>
-              <button className="modal-close" onClick={() => setShowEditModal(false)}>✕</button>
-            </div>
-            <div className="modal-body">
-              <div className="edit-form">
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Tiêu đề bài giảng</label>
-                    <input type="text" defaultValue={selectedLecture.title} />
-                  </div>
-                  <div className="form-group">
-                    <label>Lớp học</label>
-                    <select defaultValue={selectedLecture.class}>
-                      <option>React Nâng cao</option>
-                      <option>Node.js Backend</option>
-                      <option>CNTT01</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Ngày tạo</label>
-                    <input type="date" defaultValue={selectedLecture.date} />
-                  </div>
-                  <div className="form-group">
-                    <label>Thời lượng (phút)</label>
-                    <input type="number" defaultValue={parseInt(selectedLecture.duration)} />
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label>Mô tả</label>
-                  <textarea defaultValue={selectedLecture.description} rows={4}></textarea>
-                </div>
-                <div className="form-group">
-                  <label>Tài liệu hiện tại</label>
-                  <div className="current-files">
-                    {selectedLecture.files.map(file => (
-                      <div key={file.id} className="current-file-item">
-                        <span className="file-icon">{getFileIcon(file.type)}</span>
-                        <span className="file-name">{file.name}</span>
-                        <button className="btn-sm danger">🗑️ Xóa</button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label>Thêm tài liệu mới</label>
-                  <div className="file-upload-area">
-                    <input type="file" multiple accept=".pdf,.ppt,.pptx,.doc,.docx,.zip,.rar" />
-                    <div className="file-upload-label">
-                      Chọn tập tin hoặc kéo thả vào đây
-                    </div>
-                    <p className="file-upload-note">Hỗ trợ: PDF, PowerPoint, Word, Archive (Tối đa 50MB)</p>
-                  </div>
-                </div>
-              </div>
-              <div className="form-actions">
-                <button className="btn-secondary" onClick={() => setShowEditModal(false)}>Hủy</button>
-                <button className="btn-outline" onClick={() => {
-                  if (selectedLecture) {
-                    const updatedLecture = {
-                      ...selectedLecture,
-                      status: 'draft' as const
-                    };
-                    setLecturesList(prev => prev.map(lecture => 
-                      lecture.id === selectedLecture.id ? updatedLecture : lecture
-                    ));
-                    setShowEditModal(false);
-                    alert('Bài giảng đã được lưu nháp!');
-                  }
-                }}>Lưu nháp</button>
-                <button className="btn-primary" onClick={() => {
-                  if (selectedLecture) {
-                    const updatedLecture = {
-                      ...selectedLecture,
-                      status: 'published' as const
-                    };
-                    setLecturesList(prev => prev.map(lecture => 
-                      lecture.id === selectedLecture.id ? updatedLecture : lecture
-                    ));
-                    setShowEditModal(false);
-                    alert('Bài giảng đã được cập nhật!');
-                  }
-                }}>Cập nhật</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Tạo bài giảng mới */}
+      {/* Modal Tạo bài giảng */}
       {showCreateModal && (
         <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
           <div className="modal-content large" onClick={e => e.stopPropagation()}>
@@ -587,80 +468,94 @@ export default function Lectures() {
               <div className="create-form">
                 <div className="form-row">
                   <div className="form-group">
-                    <label>Tiêu đề bài giảng</label>
-                    <input type="text" placeholder="Nhập tiêu đề bài giảng" />
+                    <label>Tiêu đề bài giảng *</label>
+                    <input type="text" placeholder="Nhập tiêu đề" value={formTitle} onChange={e => setFormTitle(e.target.value)} />
                   </div>
                   <div className="form-group">
-                    <label>Lớp học</label>
-                    <select>
-                      <option>Chọn lớp học</option>
-                      <option>React Nâng cao</option>
-                      <option>Node.js Backend</option>
-                      <option>CNTT01</option>
+                    <label>Lớp học *</label>
+                    <select value={formClassId} onChange={e => setFormClassId(e.target.value)}>
+                      <option value="">Chọn lớp học</option>
+                      {classes.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
                     </select>
                   </div>
                 </div>
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Ngày tạo</label>
-                    <input type="date" />
-                  </div>
-                  <div className="form-group">
-                    <label>Thời lượng (phút)</label>
-                    <input type="number" placeholder="45" min="15" max="300" />
-                  </div>
+                <div className="form-group">
+                  <label>Nội dung bài giảng</label>
+                  <textarea rows={5} placeholder="Mô tả nội dung bài giảng..." value={formContent} onChange={e => setFormContent(e.target.value)} />
                 </div>
                 <div className="form-group">
-                  <label>Mô tả bài giảng</label>
-                  <textarea placeholder="Mô tả nội dung bài giảng" rows={4}></textarea>
+                  <label>Link video (YouTube, Drive...)</label>
+                  <input type="url" placeholder="https://..." value={formVideoUrl} onChange={e => setFormVideoUrl(e.target.value)} />
                 </div>
                 <div className="form-group">
                   <label>Tài liệu đính kèm</label>
                   <div className="file-upload-area">
-                    <input type="file" multiple accept=".pdf,.ppt,.pptx,.doc,.docx,.zip,.rar" />
-                    <div className="file-upload-label">
-                      Chọn tập tin hoặc kéo thả vào đây
-                    </div>
-                    <p className="file-upload-note">Hỗ trợ: PDF, PowerPoint, Word, Archive (Tối đa 50MB)</p>
+                    <input ref={fileInputRef} type="file" multiple accept=".pdf,.ppt,.pptx,.doc,.docx,.zip,.rar,.mp4"
+                      onChange={e => setFormFiles(e.target.files)} />
+                    <p className="file-upload-note">PDF, PowerPoint, Word, Archive, Video (tối đa 50MB/file)</p>
                   </div>
+                  {formFiles && Array.from(formFiles).map((f, i) => (
+                    <div key={i} style={{ fontSize: 13, color: '#94a3b8', marginTop: 4 }}>
+                      {getFileIcon(f.name)} {f.name} ({formatSize(f.size)})
+                    </div>
+                  ))}
                 </div>
               </div>
               <div className="form-actions">
                 <button className="btn-secondary" onClick={() => setShowCreateModal(false)}>Hủy</button>
-                <button className="btn-outline" onClick={() => {
-                  const newLecture: Lecture = {
-                    id: Math.max(...lecturesList.map(l => l.id)) + 1,
-                    title: (document.querySelector('input[placeholder="Nhập tiêu đề bài giảng"]') as HTMLInputElement)?.value || 'Bài giảng mới',
-                    class: (document.querySelector('select') as HTMLSelectElement)?.value || 'Chưa chọn',
-                    date: (document.querySelector('input[type="date"]') as HTMLInputElement)?.value || new Date().toISOString().split('T')[0],
-                    duration: ((document.querySelector('input[type="number"]') as HTMLInputElement)?.value || '45') + ' phút',
-                    status: 'draft',
-                    description: (document.querySelector('textarea') as HTMLTextAreaElement)?.value || '',
-                    views: 0,
-                    downloads: 0,
-                    files: []
-                  };
-                  setLecturesList(prev => [...prev, newLecture]);
-                  setShowCreateModal(false);
-                  alert('Bài giảng đã được lưu nháp!');
-                }}>Lưu nháp</button>
-                <button className="btn-primary" onClick={() => {
-                  const newLecture: Lecture = {
-                    id: Math.max(...lecturesList.map(l => l.id)) + 1,
-                    title: (document.querySelector('input[placeholder="Nhập tiêu đề bài giảng"]') as HTMLInputElement)?.value || 'Bài giảng mới',
-                    class: (document.querySelector('select') as HTMLSelectElement)?.value || 'Chưa chọn',
-                    date: (document.querySelector('input[type="date"]') as HTMLInputElement)?.value || new Date().toISOString().split('T')[0],
-                    duration: ((document.querySelector('input[type="number"]') as HTMLInputElement)?.value || '45') + ' phút',
-                    status: 'published',
-                    description: (document.querySelector('textarea') as HTMLTextAreaElement)?.value || '',
-                    views: 0,
-                    downloads: 0,
-                    files: []
-                  };
-                  setLecturesList(prev => [...prev, newLecture]);
-                  setShowCreateModal(false);
-                  alert('Bài giảng đã được tạo và xuất bản!');
-                }}>Tạo bài giảng</button>
+                <button className="btn-outline" disabled={submitting} onClick={() => handleCreate(false)}>
+                  {submitting ? 'Đang lưu...' : 'Lưu nháp'}
+                </button>
+                <button className="btn-primary" disabled={submitting} onClick={() => handleCreate(true)}>
+                  {submitting ? 'Đang tạo...' : '🚀 Tạo & Xuất bản'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Chỉnh sửa */}
+      {showEditModal && selectedLecture && (
+        <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
+          <div className="modal-content large" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>✏️ Chỉnh sửa bài giảng</h2>
+              <button className="modal-close" onClick={() => setShowEditModal(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="create-form">
+                <div className="form-group">
+                  <label>Tiêu đề</label>
+                  <input type="text" value={formTitle} onChange={e => setFormTitle(e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label>Nội dung</label>
+                  <textarea rows={5} value={formContent} onChange={e => setFormContent(e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label>Link video</label>
+                  <input type="url" value={formVideoUrl} onChange={e => setFormVideoUrl(e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label>Tài liệu hiện tại</label>
+                  {selectedLecture.files.map(f => (
+                    <div key={f._id} style={{ fontSize: 13, color: '#94a3b8', marginBottom: 4 }}>
+                      {getFileIcon(f.originalName)} {f.originalName} ({formatSize(f.size)})
+                    </div>
+                  ))}
+                </div>
+                <div className="form-group">
+                  <label>Thêm tài liệu mới</label>
+                  <input ref={editFileInputRef} type="file" multiple accept=".pdf,.ppt,.pptx,.doc,.docx,.zip,.rar,.mp4" />
+                </div>
+              </div>
+              <div className="form-actions">
+                <button className="btn-secondary" onClick={() => setShowEditModal(false)}>Hủy</button>
+                <button className="btn-outline" disabled={submitting} onClick={() => handleUpdate(false)}>Lưu nháp</button>
+                <button className="btn-primary" disabled={submitting} onClick={() => handleUpdate(true)}>
+                  {submitting ? 'Đang lưu...' : 'Cập nhật & Xuất bản'}
+                </button>
               </div>
             </div>
           </div>

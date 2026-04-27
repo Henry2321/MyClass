@@ -20,6 +20,85 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
+// Get all lectures for current user
+router.get('/', auth, async (req, res) => {
+  try {
+    let lectures;
+    if (req.user.role === 'teacher') {
+      lectures = await Lecture.find({ teacher: req.user._id })
+        .populate('class', 'name')
+        .sort({ createdAt: -1 });
+    } else {
+      const Class = require('../models/Class');
+      const myClasses = await Class.find({ students: req.user._id }).select('_id');
+      const classIds = myClasses.map(c => c._id);
+      lectures = await Lecture.find({ class: { $in: classIds }, isPublished: true })
+        .populate('class', 'name')
+        .populate('teacher', 'name')
+        .sort({ createdAt: -1 });
+    }
+    res.json(lectures);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Download lecture file
+router.get('/:id/files/:filename', auth, async (req, res) => {
+  try {
+    const lecture = await Lecture.findById(req.params.id).populate('class');
+    if (!lecture) return res.status(404).json({ message: 'Lecture not found' });
+    const filePath = path.resolve(__dirname, '..', 'uploads', 'lectures', req.params.filename);
+    if (!require('fs').existsSync(filePath)) return res.status(404).json({ message: 'File not found' });
+    res.download(filePath);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Update lecture (teacher only)
+router.patch('/:id', auth, teacherAuth, upload.array('files'), async (req, res) => {
+  try {
+    const lecture = await Lecture.findById(req.params.id);
+    if (!lecture || lecture.teacher.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    const { title, content, videoUrl, isPublished } = req.body;
+    if (title) lecture.title = title;
+    if (content !== undefined) lecture.content = content;
+    if (videoUrl !== undefined) lecture.videoUrl = videoUrl;
+    if (isPublished !== undefined) lecture.isPublished = isPublished === 'true' || isPublished === true;
+    if (req.files?.length) {
+      const newFiles = req.files.map(file => ({
+        filename: file.filename,
+        originalName: file.originalname,
+        path: file.path,
+        size: file.size
+      }));
+      lecture.files.push(...newFiles);
+    }
+    await lecture.save();
+    await lecture.populate('class', 'name');
+    res.json(lecture);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Delete lecture (teacher only)
+router.delete('/:id', auth, teacherAuth, async (req, res) => {
+  try {
+    const lecture = await Lecture.findById(req.params.id);
+    if (!lecture || lecture.teacher.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    await Lecture.findByIdAndDelete(req.params.id);
+    res.json({ message: 'Deleted' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 // Get lectures by class
 router.get('/class/:classId', auth, async (req, res) => {
   try {

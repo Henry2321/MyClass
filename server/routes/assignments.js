@@ -22,6 +22,56 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
+// Get all assignments for current user
+router.get('/', auth, async (req, res) => {
+  try {
+    let assignments;
+    if (req.user.role === 'teacher') {
+      assignments = await Assignment.find({ teacher: req.user._id })
+        .populate('class', 'name')
+        .sort({ createdAt: -1 });
+    } else {
+      const Class = require('../models/Class');
+      const myClasses = await Class.find({ students: req.user._id }).select('_id');
+      const classIds = myClasses.map(c => c._id);
+      assignments = await Assignment.find({ class: { $in: classIds }, isPublished: true })
+        .populate('class', 'name')
+        .populate('teacher', 'name')
+        .sort({ dueDate: 1 });
+    }
+    res.json(assignments);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Download assignment file
+router.get('/:id/files/:filename', auth, async (req, res) => {
+  try {
+    const assignment = await Assignment.findById(req.params.id);
+    if (!assignment) return res.status(404).json({ message: 'Assignment not found' });
+    const filePath = require('path').resolve(__dirname, '..', 'uploads', 'assignments', req.params.filename);
+    if (!require('fs').existsSync(filePath)) return res.status(404).json({ message: 'File not found' });
+    res.download(filePath);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Delete assignment (teacher only)
+router.delete('/:id', auth, teacherAuth, async (req, res) => {
+  try {
+    const assignment = await Assignment.findById(req.params.id);
+    if (!assignment || assignment.teacher.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    await Assignment.findByIdAndDelete(req.params.id);
+    res.json({ message: 'Deleted' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 // Get assignments by class
 router.get('/class/:classId', auth, async (req, res) => {
   try {
