@@ -7,7 +7,7 @@ interface Student {
   email: string;
   className: string;
   createdAt: string;
-  assignments: { completed: number; total: number };
+  assignments: { completed: number; total: number } | undefined;
   avgScore: number | null;
 }
 
@@ -131,7 +131,7 @@ export default function Students() {
             </div>
 
             <div className="col">
-              {student.assignments.total > 0 ? (
+              {(student.assignments?.total ?? 0) > 0 ? (
                 <div className="assignment-progress">
                   <span>{student.assignments.completed}/{student.assignments.total}</span>
                   <div className="mini-progress">
