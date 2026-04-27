@@ -133,12 +133,12 @@ export default function Students() {
             <div className="col">
               {(student.assignments?.total ?? 0) > 0 ? (
                 <div className="assignment-progress">
-                  <span>{student.assignments.completed}/{student.assignments.total}</span>
+                  <span>{student.assignments?.completed}/{student.assignments?.total}</span>
                   <div className="mini-progress">
                     <div
                       className="mini-progress-fill"
                       style={{
-                        width: `${(student.assignments.completed / student.assignments.total) * 100}%`
+                        width: `${((student.assignments?.completed ?? 0) / (student.assignments?.total ?? 1)) * 100}%`
                       }}
                     />
                   </div>
