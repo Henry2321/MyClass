@@ -749,28 +749,29 @@ export default function ClassCanvas() {
 
   useEffect(() => {
     if (!socket) return
+    const s = socket
 
     remotePlayers.current.clear()
     setParticipantRoster([])
 
     // Join classroom via socket
-    socket.emit('join_classroom', {
+    s.emit('join_classroom', {
       classId: CLASSROOM_ID,
       user: {
         id: studentId,
         name: userName,
         avatar: characters[selectedCharIndex],
-        peerId: `peer-${socket.id}`,
+        peerId: `peer-${s.id}`,
         role: user?.role || 'student',
         isCamOn: isCamOnRef.current,
         isMicOn: isMicOnRef.current
       }
     })
 
-    socket.on('current_players', (players: ClassroomPlayer[]) => {
+    s.on('current_players', (players: ClassroomPlayer[]) => {
       console.log('Received current_players:', players.length, 'players')
-      console.log('Players data:', players.map(p => ({ id: p.id, name: p.name, socketId: p.id === socket!.id ? 'SELF' : 'OTHER' })))
-      const selfPlayer = players.find(p => p.id === socket!.id)
+      console.log('Players data:', players.map(p => ({ id: p.id, name: p.name, socketId: p.id === s.id ? 'SELF' : 'OTHER' })))
+      const selfPlayer = players.find(p => p.id === s.id)
       if (selfPlayer) {
         player.current.x = selfPlayer.x
         player.current.y = selfPlayer.y
@@ -780,10 +781,10 @@ export default function ClassCanvas() {
       }
 
       remotePlayers.current.clear()
-      setParticipantRoster(players.filter(p => p.id !== socket!.id))
+      setParticipantRoster(players.filter(p => p.id !== s.id))
 
       players.forEach(p => {
-        if (p.id !== socket!.id) {
+        if (p.id !== s.id) {
           remotePlayers.current.set(p.id, p)
           if (!remotePlayerImages.current.has(p.avatar)) {
             const img = new Image()
@@ -801,7 +802,7 @@ export default function ClassCanvas() {
       })
     })
 
-    socket.on('player_joined', (p: ClassroomPlayer) => {
+    s.on('player_joined', (p: ClassroomPlayer) => {
       remotePlayers.current.set(p.id, p)
       upsertParticipant(p)
       if (!remotePlayerImages.current.has(p.avatar)) {
@@ -818,7 +819,7 @@ export default function ClassCanvas() {
       }, 1000)
     })
 
-    socket.on('player_moved', (p: ClassroomPlayer) => {
+    s.on('player_moved', (p: ClassroomPlayer) => {
       if (remotePlayers.current.has(p.id)) {
         // Cập nhật mọi thông tin bao gồm cả isTalking
         const existing = remotePlayers.current.get(p.id)
@@ -826,7 +827,7 @@ export default function ClassCanvas() {
       }
     })
 
-    socket.on('player_media_updated', (p: ClassroomPlayer) => {
+    s.on('player_media_updated', (p: ClassroomPlayer) => {
       if (remotePlayers.current.has(p.id)) {
         const existing = remotePlayers.current.get(p.id)
         remotePlayers.current.set(p.id, { ...existing, ...p } as ClassroomPlayer)
@@ -834,7 +835,7 @@ export default function ClassCanvas() {
       upsertParticipant(p)
     })
 
-    socket.on('teacher_media_command', async ({
+    s.on('teacher_media_command', async ({
       teacherSocketId,
       teacherName,
       mediaType,
@@ -858,10 +859,10 @@ export default function ClassCanvas() {
         )
       }
 
-      socket.emit('teacher_media_control_result', {
+      s.emit('teacher_media_control_result', {
         classId: CLASSROOM_ID,
         teacherSocketId,
-        targetSocketId: socket!.id,
+        targetSocketId: s.id,
         mediaType,
         enabled,
         success: result.success,
@@ -871,7 +872,7 @@ export default function ClassCanvas() {
       })
     })
 
-    socket.on('teacher_media_control_result', ({
+    s.on('teacher_media_control_result', ({
       targetName,
       mediaType,
       enabled,
@@ -893,12 +894,12 @@ export default function ClassCanvas() {
       )
     })
 
-    socket.on('teacher_media_control_error', ({ message }: { message: string }) => {
+    s.on('teacher_media_control_error', ({ message }: { message: string }) => {
       showMediaNotice(message, 'error')
     })
 
     // Screen sharing events
-    socket.on('screen_share_started', ({ sharerSocketId, sharerName, sharerRole }) => {
+    s.on('screen_share_started', ({ sharerSocketId, sharerName, sharerRole }) => {
       console.log('Screen share started by:', sharerName)
       const nextShareState: ScreenShareState = {
         isSharing: true,
@@ -913,7 +914,7 @@ export default function ClassCanvas() {
     })
 
     // WebRTC Screen Share Events
-    socket.on('screen_share_offer', async ({ sharerSocketId, offer }) => {
+    s.on('screen_share_offer', async ({ sharerSocketId, offer }) => {
       console.log('Received screen share offer from:', sharerSocketId)
       const pc = createScreenShareConnection(sharerSocketId, false)
       
@@ -922,7 +923,7 @@ export default function ClassCanvas() {
         const answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
         
-        socket.emit('screen_share_answer', {
+        s.emit('screen_share_answer', {
           classId: CLASSROOM_ID,
           sharerSocketId,
           answer
@@ -932,7 +933,7 @@ export default function ClassCanvas() {
       }
     })
 
-    socket.on('screen_share_answer', async ({ viewerSocketId, answer }) => {
+    s.on('screen_share_answer', async ({ viewerSocketId, answer }) => {
       console.log('Received screen share answer from:', viewerSocketId)
       const pc = screenShareConnections.current.get(viewerSocketId)
       if (pc) {
@@ -944,7 +945,7 @@ export default function ClassCanvas() {
       }
     })
 
-    socket.on('screen_share_ice_candidate', async ({ fromSocketId, candidate }) => {
+    s.on('screen_share_ice_candidate', async ({ fromSocketId, candidate }) => {
       console.log('Received screen share ICE candidate from:', fromSocketId)
       const pc = screenShareConnections.current.get(fromSocketId)
       if (pc) {
@@ -956,7 +957,7 @@ export default function ClassCanvas() {
       }
     })
 
-    socket.on('screen_share_stopped', ({ sharerSocketId }) => {
+    s.on('screen_share_stopped', ({ sharerSocketId }) => {
       console.log('Screen share stopped by:', sharerSocketId)
       if (screenShareRef.current.sharerSocketId === sharerSocketId) {
         const nextShareState: ScreenShareState = {
@@ -973,22 +974,22 @@ export default function ClassCanvas() {
     })
 
     // Khi player mới join và mình đang share, gửi offer cho họ
-    socket.on('screen_share_request_offer', ({ viewerSocketId }: { viewerSocketId: string }) => {
+    s.on('screen_share_request_offer', ({ viewerSocketId }: { viewerSocketId: string }) => {
       if (screenShareRef.current.isSharing && screenShareRef.current.stream) {
         startScreenShareConnection(viewerSocketId)
       }
     })
 
-    socket.on('kick_result', ({ targetName }: { targetName: string }) => {
+    s.on('kick_result', ({ targetName }: { targetName: string }) => {
       showMediaNotice(`Đã kick ${targetName} khỏi lớp.`, 'success')
     })
 
-    socket.on('request_call_back', ({ peerId }: { peerId: string }) => {
+    s.on('request_call_back', ({ peerId }: { peerId: string }) => {
       const streamToUse = myStreamRef.current || createSilentStream()
       makeCall(peerId, streamToUse)
     })
 
-    socket.on('peer_stream_updated', ({ peerId }: { peerId: string }) => {
+    s.on('peer_stream_updated', ({ peerId }: { peerId: string }) => {
       if (myStreamRef.current) {
         makeCall(peerId, myStreamRef.current)
       } else {
@@ -996,7 +997,7 @@ export default function ClassCanvas() {
       }
     })
 
-    socket.on('player_left', (id: string) => {
+    s.on('player_left', (id: string) => {
       remotePlayers.current.delete(id)
       removeParticipant(id)
     })
@@ -1652,7 +1653,7 @@ export default function ClassCanvas() {
       // Gửi vị trí cho server (throttle 30ms)
       const now = Date.now()
       if (now - lastEmitTime > 30) {
-        socket.emit('move', {
+        s.emit('move', {
           classId: CLASSROOM_ID,
           x: player.current.x,
           y: player.current.y,
@@ -1690,25 +1691,23 @@ export default function ClassCanvas() {
       canvas.removeEventListener("blur", handleBlur)
       canvas.removeEventListener("click", handleCanvasClick)
       cancelAnimationFrame(animationId)
-      if (socket) {
-        socket.off('current_players')
-        socket.off('player_joined')
-        socket.off('player_moved')
-        socket.off('player_media_updated')
-        socket.off('teacher_media_command')
-        socket.off('teacher_media_control_result')
-        socket.off('teacher_media_control_error')
-        socket.off('screen_share_started')
-        socket.off('screen_share_stopped')
-        socket.off('screen_share_offer')
-        socket.off('screen_share_answer')
-        socket.off('screen_share_ice_candidate')
-        socket.off('screen_share_request_offer')
-        socket.off('request_call_back')
-        socket.off('kick_result')
-        socket.off('peer_stream_updated')
-        socket.off('player_left')
-      }
+      s.off('current_players')
+      s.off('player_joined')
+      s.off('player_moved')
+      s.off('player_media_updated')
+      s.off('teacher_media_command')
+      s.off('teacher_media_control_result')
+      s.off('teacher_media_control_error')
+      s.off('screen_share_started')
+      s.off('screen_share_stopped')
+      s.off('screen_share_offer')
+      s.off('screen_share_answer')
+      s.off('screen_share_ice_candidate')
+      s.off('screen_share_request_offer')
+      s.off('request_call_back')
+      s.off('kick_result')
+      s.off('peer_stream_updated')
+      s.off('player_left')
     }
 
   }, [isJoined, userName, selectedCharIndex, socket, studentId, user?.role])
