@@ -748,6 +748,7 @@ export default function ClassCanvas() {
   }, [socket])
 
   useEffect(() => {
+    if (!socket) return
 
     remotePlayers.current.clear()
     setParticipantRoster([])
@@ -768,8 +769,8 @@ export default function ClassCanvas() {
 
     socket.on('current_players', (players: ClassroomPlayer[]) => {
       console.log('Received current_players:', players.length, 'players')
-      console.log('Players data:', players.map(p => ({ id: p.id, name: p.name, socketId: p.id === socket.id ? 'SELF' : 'OTHER' })))
-      const selfPlayer = players.find(p => p.id === socket.id)
+      console.log('Players data:', players.map(p => ({ id: p.id, name: p.name, socketId: p.id === socket!.id ? 'SELF' : 'OTHER' })))
+      const selfPlayer = players.find(p => p.id === socket!.id)
       if (selfPlayer) {
         player.current.x = selfPlayer.x
         player.current.y = selfPlayer.y
@@ -779,10 +780,10 @@ export default function ClassCanvas() {
       }
 
       remotePlayers.current.clear()
-      setParticipantRoster(players.filter(p => p.id !== socket.id))
+      setParticipantRoster(players.filter(p => p.id !== socket!.id))
 
       players.forEach(p => {
-        if (p.id !== socket.id) {
+        if (p.id !== socket!.id) {
           remotePlayers.current.set(p.id, p)
           if (!remotePlayerImages.current.has(p.avatar)) {
             const img = new Image()
@@ -860,7 +861,7 @@ export default function ClassCanvas() {
       socket.emit('teacher_media_control_result', {
         classId: CLASSROOM_ID,
         teacherSocketId,
-        targetSocketId: socket.id,
+        targetSocketId: socket!.id,
         mediaType,
         enabled,
         success: result.success,
@@ -1650,7 +1651,7 @@ export default function ClassCanvas() {
 
       // Gửi vị trí cho server (throttle 30ms)
       const now = Date.now()
-      if (now - lastEmitTime > 30 && socket) {
+      if (now - lastEmitTime > 30) {
         socket.emit('move', {
           classId: CLASSROOM_ID,
           x: player.current.x,
@@ -1689,23 +1690,25 @@ export default function ClassCanvas() {
       canvas.removeEventListener("blur", handleBlur)
       canvas.removeEventListener("click", handleCanvasClick)
       cancelAnimationFrame(animationId)
-      socket.off('current_players')
-      socket.off('player_joined')
-      socket.off('player_moved')
-      socket.off('player_media_updated')
-      socket.off('teacher_media_command')
-      socket.off('teacher_media_control_result')
-      socket.off('teacher_media_control_error')
-      socket.off('screen_share_started')
-      socket.off('screen_share_stopped')
-      socket.off('screen_share_offer')
-      socket.off('screen_share_answer')
-      socket.off('screen_share_ice_candidate')
-      socket.off('screen_share_request_offer')
-      socket.off('request_call_back')
-      socket.off('kick_result')
-      socket.off('peer_stream_updated')
-      socket.off('player_left')
+      if (socket) {
+        socket.off('current_players')
+        socket.off('player_joined')
+        socket.off('player_moved')
+        socket.off('player_media_updated')
+        socket.off('teacher_media_command')
+        socket.off('teacher_media_control_result')
+        socket.off('teacher_media_control_error')
+        socket.off('screen_share_started')
+        socket.off('screen_share_stopped')
+        socket.off('screen_share_offer')
+        socket.off('screen_share_answer')
+        socket.off('screen_share_ice_candidate')
+        socket.off('screen_share_request_offer')
+        socket.off('request_call_back')
+        socket.off('kick_result')
+        socket.off('peer_stream_updated')
+        socket.off('player_left')
+      }
     }
 
   }, [isJoined, userName, selectedCharIndex, socket, studentId, user?.role])
