@@ -735,9 +735,19 @@ export default function ClassCanvas() {
     )
   }
 
+  // Lắng nghe kick ở ngoài game loop để luôn hoạt động dù isJoined = true hay false
   useEffect(() => {
-    if (!isJoined) return
-    if (!isJoined || !socket) return // Không chạy game loop nếu chưa join hoặc chưa có socket
+    if (!socket) return
+    const handler = ({ teacherName }: { teacherName: string }) => {
+      localStreamRef.current?.getTracks().forEach(t => t.stop())
+      setIsJoined(false)
+      alert(`Bạn đã bị ${teacherName} kick khỏi lớp học.`)
+    }
+    socket.on('you_were_kicked', handler)
+    return () => { socket.off('you_were_kicked', handler) }
+  }, [socket])
+
+  useEffect(() => {
 
     remotePlayers.current.clear()
     setParticipantRoster([])
@@ -966,15 +976,6 @@ export default function ClassCanvas() {
       if (screenShareRef.current.isSharing && screenShareRef.current.stream) {
         startScreenShareConnection(viewerSocketId)
       }
-    })
-
-    socket.on('you_were_kicked', ({ teacherName }: { teacherName: string }) => {
-      // Dọn dẹp stream trước khi thoát
-      localStreamRef.current?.getTracks().forEach(t => t.stop())
-      alert(`Bạn đã bị ${teacherName} kick khỏi lớp học.`)
-      setIsJoined(false)
-      // Disconnect socket để server dọn sạch
-      socket.disconnect()
     })
 
     socket.on('kick_result', ({ targetName }: { targetName: string }) => {
@@ -1702,7 +1703,6 @@ export default function ClassCanvas() {
       socket.off('screen_share_ice_candidate')
       socket.off('screen_share_request_offer')
       socket.off('request_call_back')
-      socket.off('you_were_kicked')
       socket.off('kick_result')
       socket.off('peer_stream_updated')
       socket.off('player_left')
