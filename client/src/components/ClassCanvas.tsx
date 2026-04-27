@@ -66,7 +66,7 @@ import { useVoice } from "../contexts/VoiceContext"
 export default function ClassCanvas() {
   const { socket } = useSocket()
   // @ts-ignore
-  const { peer, myStream, setMyStream, isPushingToTalk, setIsPushingToTalk, remoteStreams, makeCall } = useVoice()
+  const { peer, myStream, setMyStream, isPushingToTalk, setIsPushingToTalk, remoteStreams, makeCall, refreshCallWithPeer } = useVoice() as any
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   // Sử dụng useRef cho PTT để tránh stale closure trong game loop
@@ -102,6 +102,7 @@ export default function ClassCanvas() {
   const [isMicOn, setIsMicOn] = useState(false)
   const videoPreviewRef = useRef<HTMLVideoElement>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
+  const myStreamRef = useRef<MediaStream | null>(null)
   const isCamOnRef = useRef(false)
   const isMicOnRef = useRef(false)
   const isJoinedRef = useRef(false)
@@ -154,6 +155,7 @@ export default function ClassCanvas() {
 
   useEffect(() => {
     localStreamRef.current = localStream
+    myStreamRef.current = localStream
   }, [localStream])
 
   useEffect(() => {
@@ -425,21 +427,22 @@ export default function ClassCanvas() {
     await setMicEnabled(!isMicOnRef.current)
   }
 
-  // Tự động đồng bộ localStream vào VoiceContext khi có thay đổi (sau khi đã Join)
+  // Khi localStream thay đổi (bật/tắt cam/mic): cập nhật VoiceContext và thông báo các peer tái kết nối
   useEffect(() => {
     if (isJoined) {
-      setMyStream(localStream);
-      
-      // Khi có stream mới, gọi lại tất cả remote players để đảm bảo kết nối
+      setMyStream(localStream)
+
+      if (socket) {
+        socket.emit('stream_updated', { classId: CLASSROOM_ID })
+      }
+
       if (localStream && peer) {
         remotePlayers.current.forEach(p => {
-          if (p.peerId) {
-            makeCall(p.peerId, localStream);
-          }
-        });
+          if (p.peerId) makeCall(p.peerId, localStream)
+        })
       }
     }
-  }, [localStream, isJoined, peer]);
+  }, [localStream, isJoined, peer])
 
   // useEffect để gán stream vào video element mỗi khi stream hoặc trạng thái cam thay đổi
   useEffect(() => {
@@ -666,7 +669,8 @@ export default function ClassCanvas() {
     }
   }
 
-  const characters = ["adam", "ash", "lucy", "nancy"]
+  const isTeacher = user?.role === 'teacher'
+  const characters = isTeacher ? ["adam", "ash"] : ["lucy", "nancy"]
   
   const player = useRef({
     x: 104,
@@ -945,6 +949,14 @@ export default function ClassCanvas() {
     socket.on('screen_share_request_offer', ({ viewerSocketId }: { viewerSocketId: string }) => {
       if (screenShareRef.current.isSharing && screenShareRef.current.stream) {
         startScreenShareConnection(viewerSocketId)
+      }
+    })
+
+    socket.on('peer_stream_updated', ({ peerId }: { peerId: string }) => {
+      if (myStreamRef.current) {
+        makeCall(peerId, myStreamRef.current)
+      } else {
+        refreshCallWithPeer(peerId)
       }
     })
 
@@ -1655,6 +1667,7 @@ export default function ClassCanvas() {
       socket.off('screen_share_answer')
       socket.off('screen_share_ice_candidate')
       socket.off('screen_share_request_offer')
+      socket.off('peer_stream_updated')
       socket.off('player_left')
     }
 
@@ -1816,6 +1829,7 @@ export default function ClassCanvas() {
                   />
                 </div>
 
+                {!isTeacher && (
                 <div style={{ position: "relative", textAlign: "left" }}>
                   <div style={{ 
                     position: "absolute", 
@@ -1846,6 +1860,7 @@ export default function ClassCanvas() {
                     }} 
                   />
                 </div>
+                )}
 
 
 
@@ -1911,7 +1926,7 @@ export default function ClassCanvas() {
 
             <button 
               onClick={async () => {
-                if (userName.trim() && studentId.trim()) {
+                if (userName.trim() && (isTeacher || studentId.trim())) {
                   // Tự động bật Mic khi Join nếu chưa bật
                   if (!isMicOnRef.current) {
                     const result = await setMicEnabled(true)
@@ -2234,6 +2249,46 @@ export default function ClassCanvas() {
                             Cam: {player.isCamOn ? 'Đang bật' : 'Đang tắt'} | Mic: {player.isMicOn ? 'Đang bật' : 'Đang tắt'}
                           </div>
                         </div>
+
+                        {/* Camera preview của học sinh */}
+                        {player.isCamOn && (() => {
+                          const studentStream = remoteStreams.get(`peer-${player.id}`)
+                          const hasVideo = studentStream?.getVideoTracks().some((t: MediaStreamTrack) => t.enabled && t.readyState === 'live')
+                          return hasVideo ? (
+                            <div style={{
+                              width: "100%",
+                              height: "120px",
+                              backgroundColor: "#000",
+                              borderRadius: "8px",
+                              overflow: "hidden",
+                              border: "1px solid rgba(74,222,128,0.4)"
+                            }}>
+                              <video
+                                autoPlay
+                                playsInline
+                                muted
+                                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                                ref={(el) => {
+                                  if (el && studentStream) el.srcObject = studentStream
+                                }}
+                              />
+                            </div>
+                          ) : (
+                            <div style={{
+                              width: "100%",
+                              height: "80px",
+                              backgroundColor: "rgba(0,0,0,0.3)",
+                              borderRadius: "8px",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: "11px",
+                              color: "#94a3b8"
+                            }}>
+                              Đang kết nối camera...
+                            </div>
+                          )
+                        })()}
 
                         <div style={{ display: "flex", gap: "8px" }}>
                           <button

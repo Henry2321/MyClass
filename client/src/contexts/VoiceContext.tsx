@@ -10,6 +10,7 @@ interface VoiceContextType {
   isPushingToTalk: boolean;
   setIsPushingToTalk: (is: boolean) => void;
   remoteStreams: Map<string, MediaStream>;
+  refreshCallWithPeer: (remotePeerId: string) => void;
 }
 
 const VoiceContext = createContext<VoiceContextType>({
@@ -19,6 +20,7 @@ const VoiceContext = createContext<VoiceContextType>({
   isPushingToTalk: false,
   setIsPushingToTalk: () => {},
   remoteStreams: new Map(),
+  refreshCallWithPeer: () => {},
 });
 
 export const useVoice = () => useContext(VoiceContext);
@@ -64,6 +66,23 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     }
   }, [myStream, isPushingToTalk]);
+
+  // Tái kết nối call với 1 peer cụ thể (dùng khi stream thay đổi)
+  const refreshCallWithPeer = (remotePeerId: string) => {
+    if (!peerRef.current || !myStreamRef.current) return
+    const existing = activeCalls.current.get(remotePeerId)
+    if (existing) existing.close()
+    const call = peerRef.current.call(remotePeerId, myStreamRef.current)
+    if (!call) return
+    call.on('stream', (remoteStream: MediaStream) => {
+      setRemoteStreams(prev => {
+        const next = new Map(prev)
+        next.set(remotePeerId, remoteStream)
+        return next
+      })
+    })
+    activeCalls.current.set(remotePeerId, call)
+  }
 
   // Hàm để thực hiện cuộc gọi và lưu vào ref
   const makeCall = (remotePeerId: string, stream: MediaStream) => {
@@ -205,7 +224,8 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setIsPushingToTalk,
       remoteStreams,
       // @ts-ignore - Exporting internal helper for ClassCanvas
-      makeCall 
+      makeCall,
+      refreshCallWithPeer
     }}>
       {children}
     </VoiceContext.Provider>

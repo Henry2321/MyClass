@@ -359,6 +359,17 @@ io.on("connection", (socket) => {
     },
   );
 
+  socket.on('stream_updated', ({ classId }) => {
+    const room = rooms.get(classId)
+    if (!room || !room.has(socket.id)) return
+    const player = room.get(socket.id)
+    // Thông báo cho tất cả người khác trong phòng biết peer này có stream mới
+    socket.to(`class_${classId}`).emit('peer_stream_updated', {
+      peerId: `peer-${socket.id}`,
+      socketId: socket.id
+    })
+  })
+
   socket.on("send_message", ({ classId, message }) => {
     // Broadcast message to everyone in the room (including sender if needed, but usually handled by client)
     io.to(`class_${classId}`).emit("new_message", message);
