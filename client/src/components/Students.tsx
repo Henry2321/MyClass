@@ -1,52 +1,53 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { apiCall } from '../utils/api';
+
+interface Student {
+  _id: string;
+  name: string;
+  email: string;
+  className: string;
+  createdAt: string;
+  assignments: { completed: number; total: number };
+  avgScore: number | null;
+}
 
 export default function Students() {
-  const [students] = useState([
-    {
-      id: 1,
-      name: 'Nguyễn Văn An',
-      email: 'an.nguyen@email.com',
-      class: 'React Nâng cao',
-      joinDate: '2024-02-15',
-      assignments: { completed: 8, total: 10 },
-      avgScore: 85
-    },
-    {
-      id: 2,
-      name: 'Trần Thị Bình',
-      email: 'binh.tran@email.com',
-      class: 'Node.js Backend',
-      joinDate: '2024-02-20',
-      assignments: { completed: 6, total: 8 },
-      avgScore: 92
-    },
-    {
-      id: 3,
-      name: 'Lê Văn Cường',
-      email: 'cuong.le@email.com',
-      class: 'Database Design',
-      joinDate: '2024-02-10',
-      assignments: { completed: 12, total: 12 },
-      avgScore: 78
-    },
-    {
-      id: 4,
-      name: 'Phạm Thị Dung',
-      email: 'dung.pham@email.com',
-      class: 'React Nâng cao',
-      joinDate: '2024-02-25',
-      assignments: { completed: 7, total: 10 },
-      avgScore: 88
-    }
-  ]);
-
+  const [students, setStudents] = useState<Student[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [selectedClass, setSelectedClass] = useState('all');
 
-  const filteredStudents = selectedClass === 'all' 
-    ? students 
-    : students.filter(student => student.class === selectedClass);
+  useEffect(() => {
+    const fetchStudents = async () => {
+      try {
+        const res = await apiCall('/api/students');
+        if (!res.ok) throw new Error('Không thể tải danh sách sinh viên');
+        const data = await res.json();
+        setStudents(data);
+      } catch (err: any) {
+        setError(err.message || 'Lỗi kết nối');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchStudents();
+  }, []);
 
-  const getScoreColor = (score: number) => {
+  const classes = [...new Set(students.map(s => s.className))];
+
+  const filteredStudents = selectedClass === 'all'
+    ? students
+    : students.filter(s => s.className === selectedClass);
+
+  const avgScoreAll = students.length > 0
+    ? Math.round(
+        students.filter(s => s.avgScore != null).reduce((sum, s) => sum + (s.avgScore ?? 0), 0) /
+        (students.filter(s => s.avgScore != null).length || 1)
+      )
+    : 0;
+
+  const getScoreColor = (score: number | null) => {
+    if (score == null) return 'gray';
     if (score >= 90) return 'green';
     if (score >= 80) return 'orange';
     return 'red';
@@ -55,7 +56,7 @@ export default function Students() {
   return (
     <>
       <h1 className="title">Sinh viên 👥</h1>
-      
+
       <div className="students-header">
         <div className="students-stats">
           <div className="stat-item">
@@ -63,27 +64,25 @@ export default function Students() {
             <span className="stat-label">Tổng sinh viên</span>
           </div>
           <div className="stat-item">
-            <span className="stat-number">3</span>
+            <span className="stat-number">{classes.length}</span>
             <span className="stat-label">Lớp học</span>
           </div>
           <div className="stat-item">
-            <span className="stat-number">
-              {Math.round(students.reduce((sum, s) => sum + s.avgScore, 0) / students.length)}
-            </span>
+            <span className="stat-number">{avgScoreAll || '—'}</span>
             <span className="stat-label">Điểm TB</span>
           </div>
         </div>
-        
+
         <div className="students-filters">
-          <select 
-            value={selectedClass} 
+          <select
+            value={selectedClass}
             onChange={(e) => setSelectedClass(e.target.value)}
             className="class-filter"
           >
             <option value="all">Tất cả lớp</option>
-            <option value="React Nâng cao">React Nâng cao</option>
-            <option value="Node.js Backend">Node.js Backend</option>
-            <option value="Database Design">Database Design</option>
+            {classes.map(cls => (
+              <option key={cls} value={cls}>{cls}</option>
+            ))}
           </select>
         </div>
       </div>
@@ -96,43 +95,65 @@ export default function Students() {
           <div className="col">Điểm TB</div>
           <div className="col">Thao tác</div>
         </div>
-        
+
+        {loading && (
+          <div style={{ padding: '24px', textAlign: 'center', color: '#94a3b8' }}>
+            Đang tải...
+          </div>
+        )}
+
+        {error && (
+          <div style={{ padding: '24px', textAlign: 'center', color: '#ef4444' }}>
+            {error}
+          </div>
+        )}
+
+        {!loading && !error && filteredStudents.length === 0 && (
+          <div style={{ padding: '24px', textAlign: 'center', color: '#94a3b8' }}>
+            Chưa có sinh viên nào.
+          </div>
+        )}
+
         {filteredStudents.map(student => (
-          <div key={student.id} className="table-row">
+          <div key={student._id} className="table-row">
             <div className="col student-info">
               <div className="student-avatar">
-                {student.name.charAt(0)}
+                {student.name.charAt(0).toUpperCase()}
               </div>
               <div>
                 <div className="student-name">{student.name}</div>
                 <div className="student-email">{student.email}</div>
               </div>
             </div>
-            
+
             <div className="col">
-              <span className="class-badge">{student.class}</span>
+              <span className="class-badge">{student.className}</span>
             </div>
-            
+
             <div className="col">
-              <div className="assignment-progress">
-                <span>{student.assignments.completed}/{student.assignments.total}</span>
-                <div className="mini-progress">
-                  <div 
-                    className="mini-progress-fill"
-                    style={{ 
-                      width: `${(student.assignments.completed / student.assignments.total) * 100}%` 
-                    }}
-                  ></div>
+              {student.assignments.total > 0 ? (
+                <div className="assignment-progress">
+                  <span>{student.assignments.completed}/{student.assignments.total}</span>
+                  <div className="mini-progress">
+                    <div
+                      className="mini-progress-fill"
+                      style={{
+                        width: `${(student.assignments.completed / student.assignments.total) * 100}%`
+                      }}
+                    />
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <span style={{ color: '#94a3b8', fontSize: '13px' }}>Chưa có</span>
+              )}
             </div>
-            
+
             <div className="col">
               <span className={`score ${getScoreColor(student.avgScore)}`}>
-                {student.avgScore}
+                {student.avgScore ?? '—'}
               </span>
             </div>
-            
+
             <div className="col">
               <button className="btn-outline small">Xem chi tiết</button>
               <button className="btn-outline small">Nhắn tin</button>
