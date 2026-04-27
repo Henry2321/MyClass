@@ -77,14 +77,17 @@ export default function Assignments() {
       totalStudents: 25,
       status: 'active',
       createdAt: '2024-03-10',
-      attachments: ['react-hooks-template.zip', 'requirements.pdf'],
+      attachments: [
+        { filename: 'react-hooks-template.zip', originalName: 'react-hooks-template.zip', size: 0 },
+        { filename: 'requirements.pdf', originalName: 'requirements.pdf', size: 0 },
+      ],
       submissions: [
         {
           id: '1',
           studentName: 'Nguyễn Văn A',
           studentEmail: 'nguyenvana@email.com',
           submittedAt: '2024-03-18 14:30',
-          files: ['hooks-assignment.zip'],
+          files: [{ filename: 'hooks-assignment.zip', originalName: 'hooks-assignment.zip', size: 0 }],
           grade: 8.5,
           feedback: 'Bài làm tốt, cần cải thiện error handling',
           status: 'graded'
@@ -94,7 +97,7 @@ export default function Assignments() {
           studentName: 'Trần Thị B',
           studentEmail: 'tranthib@email.com',
           submittedAt: '2024-03-19 09:15',
-          files: ['react-hooks-project.zip'],
+          files: [{ filename: 'react-hooks-project.zip', originalName: 'react-hooks-project.zip', size: 0 }],
           status: 'submitted'
         }
       ]
@@ -109,14 +112,20 @@ export default function Assignments() {
       totalStudents: 18,
       status: 'active',
       createdAt: '2024-03-12',
-      attachments: ['api-starter.zip', 'database-schema.sql'],
+      attachments: [
+        { filename: 'api-starter.zip', originalName: 'api-starter.zip', size: 0 },
+        { filename: 'database-schema.sql', originalName: 'database-schema.sql', size: 0 },
+      ],
       submissions: [
         {
           id: '3',
           studentName: 'Lê Văn C',
           studentEmail: 'levanc@email.com',
           submittedAt: '2024-03-20 16:45',
-          files: ['express-api.zip', 'documentation.md'],
+          files: [
+            { filename: 'express-api.zip', originalName: 'express-api.zip', size: 0 },
+            { filename: 'documentation.md', originalName: 'documentation.md', size: 0 },
+          ],
           grade: 9.0,
           feedback: 'Excellent work! Clean code and good documentation',
           status: 'graded'
@@ -133,7 +142,10 @@ export default function Assignments() {
       totalStudents: 30,
       status: 'completed',
       createdAt: '2024-03-05',
-      attachments: ['database-requirements.pdf', 'sample-data.sql'],
+      attachments: [
+        { filename: 'database-requirements.pdf', originalName: 'database-requirements.pdf', size: 0 },
+        { filename: 'sample-data.sql', originalName: 'sample-data.sql', size: 0 },
+      ],
       submissions: []
     }
   ]);
@@ -590,7 +602,7 @@ export default function Assignments() {
                           <button 
                             className="btn-outline"
                             onClick={() => {
-                              alert(`Bài nộp của bạn:\n\nFile: ${mySubmission?.files.join(', ')}\nThời gian nộp: ${mySubmission?.submittedAt}\n\nTrạng thái: ${mySubmission?.status === 'graded' ? '✅ Đã chấm điểm' : 'Chờ chấm'}`);
+                              alert(`Bài nộp của bạn:\n\nFile: ${mySubmission?.files.map(f => f.originalName).join(', ')}\nThời gian nộp: ${mySubmission?.submittedAt}\n\nTrạng thái: ${mySubmission?.status === 'graded' ? '✅ Đã chấm điểm' : 'Chờ chấm'}`);
                             }}
                           >
                             👁️ 👁️ Xem bài nộp
@@ -704,7 +716,7 @@ export default function Assignments() {
                           <button 
                             className="btn-sm"
                             onClick={() => {
-                              alert(`Xem chi tiết bài nộp của ${submission.studentName}\n\nFile: ${submission.files.join(', ')}\nThời gian nộp: ${submission.submittedAt}`);
+                              alert(`Xem chi tiết bài nộp của ${submission.studentName}\n\nFile: ${submission.files.map(f => f.originalName).join(', ')}\nThời gian nộp: ${submission.submittedAt}`);
                             }}
                           >
                             Xem chi tiết
@@ -924,7 +936,7 @@ export default function Assignments() {
                             <button 
                               className="btn-sm"
                               onClick={() => {
-                                alert(`File bài nộp: ${submission.files.join(', ')}\n\nClick OK để tải về file`);
+                                alert(`File bài nộp: ${submission.files.map(f => f.originalName).join(', ')}\n\nClick OK để tải về file`);
                               }}
                             >
                               Xem file
