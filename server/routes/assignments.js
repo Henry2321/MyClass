@@ -58,6 +58,23 @@ router.get('/:id/files/:filename', auth, async (req, res) => {
   }
 });
 
+// Download submission file
+router.get('/:id/submissions/files/:filename', auth, async (req, res) => {
+  try {
+    const assignment = await Assignment.findById(req.params.id);
+    if (!assignment) return res.status(404).json({ message: 'Assignment not found' });
+    // Only teacher of this assignment or the submitting student can download
+    const isTeacher = assignment.teacher.toString() === req.user._id.toString();
+    const isStudent = assignment.submissions.some(s => s.student.toString() === req.user._id.toString());
+    if (!isTeacher && !isStudent) return res.status(403).json({ message: 'Access denied' });
+    const filePath = require('path').resolve(__dirname, '..', 'uploads', 'assignments', req.params.filename);
+    if (!require('fs').existsSync(filePath)) return res.status(404).json({ message: 'File not found' });
+    res.download(filePath);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 // Delete assignment (teacher only)
 router.delete('/:id', auth, teacherAuth, async (req, res) => {
   try {

@@ -1,16 +1,28 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import apiCall from '../utils/api';
+import apiCall, { getApiUrl } from '../utils/api';
+
+interface SubmissionFile {
+  filename: string;
+  originalName: string;
+  size: number;
+}
 
 interface Submission {
   id: string;
   studentName: string;
   studentEmail: string;
   submittedAt: string;
-  files: string[];
+  files: SubmissionFile[];
   grade?: number;
   feedback?: string;
   status: 'submitted' | 'graded' | 'late';
+}
+
+interface AssignmentFile {
+  filename: string;
+  originalName: string;
+  size: number;
 }
 
 interface Assignment {
@@ -25,7 +37,7 @@ interface Assignment {
   totalStudents: number;
   status: 'active' | 'completed' | 'draft';
   createdAt: string;
-  attachments: string[];
+  attachments: AssignmentFile[];
 }
 
 interface ClassOption {
@@ -197,6 +209,27 @@ export default function Assignments() {
     } finally {
       setCreating(false);
     }
+  };
+
+  const handleDownloadFile = (assignmentId: string, filename: string, originalName: string, isSubmission = false) => {
+    const token = localStorage.getItem('token');
+    const path = isSubmission
+      ? `/api/assignments/${assignmentId}/submissions/files/${filename}`
+      : `/api/assignments/${assignmentId}/files/${filename}`;
+    const url = getApiUrl(path);
+    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+      .then(res => {
+        if (!res.ok) throw new Error('File không tồn tại');
+        return res.blob();
+      })
+      .then(blob => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = originalName;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      })
+      .catch(() => alert('Không thể tải file. File có thể chưa được upload lên server.'));
   };
 
   const handleQuickAction = (action: string) => {
@@ -650,8 +683,8 @@ export default function Assignments() {
                           <h6>File đính kèm:</h6>
                           {submission.files.map((file, index) => (
                             <div key={index} className="file-item">
-                              <span>{file}</span>
-                              <button className="btn-sm">Tải về</button>
+                              <span>{file.originalName}</span>
+                              <button className="btn-sm" onClick={() => handleDownloadFile(String(selectedAssignment.id), file.filename, file.originalName, true)}>📥 Tải về</button>
                             </div>
                           ))}
                         </div>
