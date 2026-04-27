@@ -359,14 +359,52 @@ io.on("connection", (socket) => {
     },
   );
 
+  socket.on('kick_player', ({ classId, targetSocketId }) => {
+    const room = rooms.get(classId)
+    if (!room) return
+
+    const requester = room.get(socket.id)
+    const target = room.get(targetSocketId)
+
+    if (!requester || requester.role !== 'teacher') {
+      socket.emit('teacher_media_control_error', { message: 'Chỉ giáo viên mới có quyền kick học sinh.' })
+      return
+    }
+
+    if (!target || target.role !== 'student') {
+      socket.emit('teacher_media_control_error', { message: 'Chỉ có thể kick học sinh.' })
+      return
+    }
+
+    // Thông báo cho người bị kick
+    io.to(targetSocketId).emit('you_were_kicked', { teacherName: requester.name })
+
+    // Xóa khỏi room và thông báo cho mọi người
+    room.delete(targetSocketId)
+    io.to(`class_${classId}`).emit('player_left', targetSocketId)
+
+    // Thông báo cho giáo viên
+    socket.emit('teacher_media_control_result', {
+      targetSocketId,
+      targetName: target.name,
+      mediaType: 'camera',
+      enabled: false,
+      success: true,
+      message: `Đã kick ${target.name} khỏi lớp.`
+    })
+  })
+
   socket.on('stream_updated', ({ classId }) => {
     const room = rooms.get(classId)
     if (!room || !room.has(socket.id)) return
-    const player = room.get(socket.id)
     // Thông báo cho tất cả người khác trong phòng biết peer này có stream mới
     socket.to(`class_${classId}`).emit('peer_stream_updated', {
       peerId: `peer-${socket.id}`,
       socketId: socket.id
+    })
+    // Yêu cầu tất cả người khác gọi lại cho peer này
+    socket.to(`class_${classId}`).emit('request_call_back', {
+      peerId: `peer-${socket.id}`
     })
   })
 

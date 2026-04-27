@@ -703,6 +703,12 @@ export default function ClassCanvas() {
     setParticipantRoster(prev => prev.filter(item => item.id !== playerId))
   }
 
+  const handleKickPlayer = (targetSocketId: string, targetName: string) => {
+    if (!socket || user?.role !== 'teacher') return
+    if (!window.confirm(`Bạn có chắc muốn kick "${targetName}" khỏi lớp?`)) return
+    socket.emit('kick_player', { classId: CLASSROOM_ID, targetSocketId })
+  }
+
   const handleTeacherMediaControl = (targetSocketId: string, mediaType: MediaType, enabled: boolean) => {
     if (!socket || user?.role !== 'teacher') return
 
@@ -949,6 +955,18 @@ export default function ClassCanvas() {
     socket.on('screen_share_request_offer', ({ viewerSocketId }: { viewerSocketId: string }) => {
       if (screenShareRef.current.isSharing && screenShareRef.current.stream) {
         startScreenShareConnection(viewerSocketId)
+      }
+    })
+
+    socket.on('you_were_kicked', ({ teacherName }: { teacherName: string }) => {
+      alert(`Bạn đã bị ${teacherName} kick khỏi lớp học.`)
+      setIsJoined(false)
+    })
+
+    socket.on('request_call_back', ({ peerId }: { peerId: string }) => {
+      // Người khác vừa có stream mới, họ yêu cầu mình gọi lại cho họ
+      if (myStreamRef.current) {
+        makeCall(peerId, myStreamRef.current)
       }
     })
 
@@ -1667,6 +1685,8 @@ export default function ClassCanvas() {
       socket.off('screen_share_answer')
       socket.off('screen_share_ice_candidate')
       socket.off('screen_share_request_offer')
+      socket.off('request_call_back')
+      socket.off('you_were_kicked')
       socket.off('peer_stream_updated')
       socket.off('player_left')
     }
@@ -2290,7 +2310,7 @@ export default function ClassCanvas() {
                           )
                         })()}
 
-                        <div style={{ display: "flex", gap: "8px" }}>
+                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                           <button
                             onClick={() => handleTeacherMediaControl(player.id, 'camera', !player.isCamOn)}
                             style={{
@@ -2323,6 +2343,23 @@ export default function ClassCanvas() {
                             }}
                           >
                             {player.isMicOn ? 'Tắt mic' : 'Bật mic'}
+                          </button>
+
+                          <button
+                            onClick={() => handleKickPlayer(player.id, player.name)}
+                            style={{
+                              width: "100%",
+                              border: "none",
+                              borderRadius: "10px",
+                              padding: "9px 10px",
+                              cursor: "pointer",
+                              fontSize: "12px",
+                              fontWeight: 700,
+                              color: "white",
+                              backgroundColor: "#7f1d1d"
+                            }}
+                          >
+                            🚫 Kick khỏi lớp
                           </button>
                         </div>
                       </div>
