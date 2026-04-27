@@ -175,7 +175,14 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         newPeer.on('call', (call: any) => {
           console.log('Receiving call from:', call.peer);
-          call.answer(myStreamRef.current || undefined);
+          // Answer với stream hiện tại hoặc silent stream để PeerJS kết nối được
+          const answerStream = myStreamRef.current || (() => {
+            try {
+              const ctx = new AudioContext()
+              return ctx.createMediaStreamDestination().stream
+            } catch { return undefined }
+          })()
+          call.answer(answerStream)
           
           call.on('stream', (remoteStream: MediaStream) => {
             console.log('Received remote stream from (incoming call):', call.peer);

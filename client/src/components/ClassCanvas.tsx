@@ -427,18 +427,28 @@ export default function ClassCanvas() {
     await setMicEnabled(!isMicOnRef.current)
   }
 
+  // Tạo silent stream để PeerJS có thể thiết lập kết nối mà không cần bật cam/mic thật
+  const createSilentStream = (): MediaStream => {
+    const ctx = new AudioContext()
+    const dest = ctx.createMediaStreamDestination()
+    return dest.stream
+  }
+
   // Khi localStream thay đổi (bật/tắt cam/mic): cập nhật VoiceContext và thông báo các peer tái kết nối
   useEffect(() => {
     if (isJoined) {
-      setMyStream(localStream)
+      // Nếu không có stream thật, dùng silent stream để PeerJS vẫn kết nối được
+      const streamToUse = localStream || createSilentStream()
+      setMyStream(streamToUse)
+      myStreamRef.current = streamToUse
 
       if (socket) {
         socket.emit('stream_updated', { classId: CLASSROOM_ID })
       }
 
-      if (localStream && peer) {
+      if (peer) {
         remotePlayers.current.forEach(p => {
-          if (p.peerId) makeCall(p.peerId, localStream)
+          if (p.peerId) makeCall(p.peerId, streamToUse)
         })
       }
     }
@@ -959,15 +969,21 @@ export default function ClassCanvas() {
     })
 
     socket.on('you_were_kicked', ({ teacherName }: { teacherName: string }) => {
+      // Dọn dẹp stream trước khi thoát
+      localStreamRef.current?.getTracks().forEach(t => t.stop())
       alert(`Bạn đã bị ${teacherName} kick khỏi lớp học.`)
       setIsJoined(false)
+      // Disconnect socket để server dọn sạch
+      socket.disconnect()
+    })
+
+    socket.on('kick_result', ({ targetName }: { targetName: string }) => {
+      showMediaNotice(`Đã kick ${targetName} khỏi lớp.`, 'success')
     })
 
     socket.on('request_call_back', ({ peerId }: { peerId: string }) => {
-      // Người khác vừa có stream mới, họ yêu cầu mình gọi lại cho họ
-      if (myStreamRef.current) {
-        makeCall(peerId, myStreamRef.current)
-      }
+      const streamToUse = myStreamRef.current || createSilentStream()
+      makeCall(peerId, streamToUse)
     })
 
     socket.on('peer_stream_updated', ({ peerId }: { peerId: string }) => {
@@ -1687,6 +1703,7 @@ export default function ClassCanvas() {
       socket.off('screen_share_request_offer')
       socket.off('request_call_back')
       socket.off('you_were_kicked')
+      socket.off('kick_result')
       socket.off('peer_stream_updated')
       socket.off('player_left')
     }

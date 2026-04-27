@@ -376,22 +376,28 @@ io.on("connection", (socket) => {
       return
     }
 
+    const targetName = target.name
+
+    // Xóa khỏi room trước
+    room.delete(targetSocketId)
+
     // Thông báo cho người bị kick
     io.to(targetSocketId).emit('you_were_kicked', { teacherName: requester.name })
 
-    // Xóa khỏi room và thông báo cho mọi người
-    room.delete(targetSocketId)
+    // Thông báo cho tất cả mọi người trong phòng
     io.to(`class_${classId}`).emit('player_left', targetSocketId)
 
-    // Thông báo cho giáo viên
-    socket.emit('teacher_media_control_result', {
-      targetSocketId,
-      targetName: target.name,
-      mediaType: 'camera',
-      enabled: false,
-      success: true,
-      message: `Đã kick ${target.name} khỏi lớp.`
-    })
+    // Force disconnect socket bị kick sau 500ms (cho đủ thời gian event đến client)
+    setTimeout(() => {
+      const targetSocket = io.sockets.sockets.get(targetSocketId)
+      if (targetSocket) {
+        targetSocket.leave(`class_${classId}`)
+        targetSocket.disconnect(true)
+      }
+    }, 500)
+
+    // Thông báo kết quả cho giáo viên
+    socket.emit('kick_result', { success: true, targetName })
   })
 
   socket.on('stream_updated', ({ classId }) => {
