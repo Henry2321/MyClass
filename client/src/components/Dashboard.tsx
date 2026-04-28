@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-import { useAuth } from '../contexts/AuthContext';
-import apiCall from '../utils/api';
+import { useEffect, useState } from "react";
+import { useAuth } from "../contexts/AuthContext";
+import apiCall from "../utils/api";
 
 interface StatCard {
   title: string;
@@ -15,7 +15,7 @@ interface Task {
   title: string;
   className: string;
   dueDate: string;
-  priority: 'high' | 'medium' | 'low';
+  priority: "high" | "medium" | "low";
   completed: boolean;
 }
 
@@ -75,7 +75,7 @@ const EMPTY_DASHBOARD: DashboardData = {
 };
 
 const parseTimeToMinutes = (time: string) => {
-  const [hours, minutes] = time.split(':').map(Number);
+  const [hours, minutes] = time.split(":").map(Number);
   if (Number.isNaN(hours) || Number.isNaN(minutes)) {
     return 0;
   }
@@ -89,21 +89,30 @@ const getRelativeTime = (value: string) => {
   const absMs = Math.abs(diffMs);
 
   if (absMs < 60_000) {
-    return 'Vừa xong';
+    return "Vừa xong";
   }
 
   const minutes = Math.round(diffMs / 60_000);
   if (Math.abs(minutes) < 60) {
-    return new Intl.RelativeTimeFormat('vi', { numeric: 'auto' }).format(minutes, 'minute');
+    return new Intl.RelativeTimeFormat("vi", { numeric: "auto" }).format(
+      minutes,
+      "minute",
+    );
   }
 
   const hours = Math.round(diffMs / 3_600_000);
   if (Math.abs(hours) < 24) {
-    return new Intl.RelativeTimeFormat('vi', { numeric: 'auto' }).format(hours, 'hour');
+    return new Intl.RelativeTimeFormat("vi", { numeric: "auto" }).format(
+      hours,
+      "hour",
+    );
   }
 
   const days = Math.round(diffMs / 86_400_000);
-  return new Intl.RelativeTimeFormat('vi', { numeric: 'auto' }).format(days, 'day');
+  return new Intl.RelativeTimeFormat("vi", { numeric: "auto" }).format(
+    days,
+    "day",
+  );
 };
 
 const formatDeadline = (dueDate: string) => {
@@ -117,75 +126,80 @@ const formatDeadline = (dueDate: string) => {
   startOfTarget.setHours(0, 0, 0, 0);
 
   if (target < now) {
-    return `Quá hạn ${target.toLocaleDateString('vi-VN')}`;
+    return `Quá hạn ${target.toLocaleDateString("vi-VN")}`;
   }
 
   if (startOfTarget.getTime() === startOfToday.getTime()) {
-    return `Hôm nay ${target.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`;
+    return `Hôm nay ${target.toLocaleTimeString("vi-VN", {
+      hour: "2-digit",
+      minute: "2-digit",
+    })}`;
   }
 
   if (startOfTarget.getTime() === startOfTomorrow.getTime()) {
-    return `Ngày mai ${target.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`;
+    return `Ngày mai ${target.toLocaleTimeString("vi-VN", {
+      hour: "2-digit",
+      minute: "2-digit",
+    })}`;
   }
 
-  const diffDays = Math.ceil((startOfTarget.getTime() - startOfToday.getTime()) / 86_400_000);
+  const diffDays = Math.ceil(
+    (startOfTarget.getTime() - startOfToday.getTime()) / 86_400_000,
+  );
+
   if (diffDays <= 7) {
     return `Còn ${diffDays} ngày`;
   }
 
-  return target.toLocaleDateString('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
+  return target.toLocaleDateString("vi-VN");
 };
 
 const getActivityIcon = (type: string) => {
   switch (type) {
-    case 'submission':
-      return '📤';
-    case 'grade':
-      return '✅';
-    case 'class':
-      return '🏫';
-    case 'lecture':
-      return '📚';
+    case "submission":
+      return "📤";
+    case "grade":
+      return "✅";
+    case "class":
+      return "🏫";
+    case "lecture":
+      return "📚";
     default:
-      return '📌';
+      return "📌";
   }
 };
 
 const getNotificationIcon = (type: string) => {
   switch (type) {
-    case 'assignment':
-      return '📝';
-    case 'lecture':
-      return '📚';
-    case 'grade':
-      return '🎯';
-    case 'class':
-      return '🏫';
+    case "assignment":
+      return "📝";
+    case "lecture":
+      return "📚";
+    case "grade":
+      return "🎯";
+    case "class":
+      return "🏫";
     default:
-      return '🔔';
+      return "🔔";
   }
 };
 
 const getPriorityColor = (priority: string) => {
   switch (priority) {
-    case 'high':
-      return 'red';
-    case 'medium':
-      return 'orange';
-    case 'low':
-      return 'green';
+    case "high":
+      return "red";
+    case "medium":
+      return "orange";
+    case "low":
+      return "green";
     default:
-      return 'gray';
+      return "gray";
   }
 };
 
 const getScheduleStatus = (item: ScheduleItem, currentTime: Date) => {
   if (item.dayOfWeek !== currentTime.getDay()) {
-    return { key: 'upcoming', label: 'Sắp tới' };
+    return { key: "upcoming", label: "Sắp tới" };
   }
 
   const nowMinutes = currentTime.getHours() * 60 + currentTime.getMinutes();
@@ -193,14 +207,14 @@ const getScheduleStatus = (item: ScheduleItem, currentTime: Date) => {
   const endMinutes = parseTimeToMinutes(item.endTime);
 
   if (nowMinutes < startMinutes) {
-    return { key: 'upcoming', label: 'Sắp tới' };
+    return { key: "upcoming", label: "Sắp tới" };
   }
 
   if (nowMinutes > endMinutes) {
-    return { key: 'pending', label: 'Đã xong' };
+    return { key: "pending", label: "Đã xong" };
   }
 
-  return { key: 'ongoing', label: 'Đang diễn ra' };
+  return { key: "ongoing", label: "Đang diễn ra" };
 };
 
 const filterTasks = (tasks: Task[], selectedPeriod: string) => {
@@ -212,14 +226,14 @@ const filterTasks = (tasks: Task[], selectedPeriod: string) => {
   const endOfWeek = new Date(startOfToday);
   endOfWeek.setDate(endOfWeek.getDate() + 7);
 
-  if (selectedPeriod === 'today') {
+  if (selectedPeriod === "today") {
     return tasks.filter((task) => {
       const dueDate = new Date(task.dueDate);
       return dueDate >= startOfToday && dueDate < endOfToday;
     });
   }
 
-  if (selectedPeriod === 'week') {
+  if (selectedPeriod === "week") {
     return tasks.filter((task) => {
       const dueDate = new Date(task.dueDate);
       return dueDate >= startOfToday && dueDate < endOfWeek;
@@ -229,15 +243,20 @@ const filterTasks = (tasks: Task[], selectedPeriod: string) => {
   return tasks;
 };
 
-export default function Dashboard({ onTabChange }: { onTabChange: (tab: string) => void }) {
+export default function Dashboard({
+  onTabChange,
+}: {
+  onTabChange: (tab: string) => void;
+}) {
   const { user } = useAuth();
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [selectedPeriod, setSelectedPeriod] = useState('today');
+  const [selectedPeriod, setSelectedPeriod] = useState("today");
   const [showQuickActions, setShowQuickActions] = useState(false);
-  const [dashboardData, setDashboardData] = useState<DashboardData>(EMPTY_DASHBOARD);
+  const [dashboardData, setDashboardData] =
+    useState<DashboardData>(EMPTY_DASHBOARD);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -247,87 +266,55 @@ export default function Dashboard({ onTabChange }: { onTabChange: (tab: string) 
     return () => window.clearInterval(timer);
   }, []);
 
-  const loadDashboard = async () => {
-    try {
-      setError('');
-      setRefreshing(true);
-
-      const response = await apiCall('/api/dashboard/overview');
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Không thể tải dashboard');
-      }
-
-      setDashboardData({
-        stats: data.stats || [],
-        tasks: data.tasks || [],
-        activities: data.activities || [],
-        schedule: data.schedule || [],
-        progress: data.progress || [],
-        quickStats: data.quickStats || [],
-        notifications: data.notifications || [],
-      });
-    } catch (loadError) {
-      const message = loadError instanceof Error ? loadError.message : 'Không thể tải dashboard';
-      setError(message);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
   useEffect(() => {
+    const loadDashboard = async () => {
+      try {
+        setRefreshing(true);
+        setError("");
+
+        const response = await apiCall("/api/dashboard/overview");
+        const data = (await response.json()) as Partial<DashboardData> & {
+          message?: string;
+        };
+
+        if (!response.ok) {
+          throw new Error(data.message || "Không thể tải dashboard");
+        }
+
+        setDashboardData({
+          stats: data.stats || [],
+          tasks: data.tasks || [],
+          activities: data.activities || [],
+          schedule: data.schedule || [],
+          progress: data.progress || [],
+          quickStats: data.quickStats || [],
+          notifications: data.notifications || [],
+        });
+      } catch (loadError) {
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Không thể tải dashboard",
+        );
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    };
+
     void loadDashboard();
   }, [user?.id]);
 
   const getGreeting = () => {
     const hour = currentTime.getHours();
-    if (hour < 12) return 'Chào buổi sáng';
-    if (hour < 18) return 'Chào buổi chiều';
-    return 'Chào buổi tối';
+    if (hour < 12) return "Chào buổi sáng";
+    if (hour < 18) return "Chào buổi chiều";
+    return "Chào buổi tối";
   };
 
   const handleQuickAction = (action: string) => {
     setShowQuickActions(false);
-
-    switch (action) {
-      case 'create-class':
-        onTabChange('classes');
-        break;
-      case 'create-assignment':
-        onTabChange('assignments');
-        break;
-      case 'view-reports':
-        onTabChange('dashboard');
-        break;
-      case 'manage-students':
-        onTabChange('students');
-        break;
-      case 'create-lecture':
-        onTabChange('lectures');
-        break;
-      case 'settings':
-        onTabChange('settings');
-        break;
-      case 'submitted-assignments':
-        onTabChange('submitted-assignments');
-        break;
-      case 'upcoming-deadlines':
-        onTabChange('deadlines');
-        break;
-      case 'access-lectures':
-        onTabChange('lectures');
-        break;
-      case 'view-grades':
-        onTabChange('grades');
-        break;
-      case 'schedule':
-        onTabChange('schedule');
-        break;
-      default:
-        break;
-    }
+    onTabChange(action);
   };
 
   const visibleTasks = filterTasks(dashboardData.tasks, selectedPeriod);
@@ -348,16 +335,19 @@ export default function Dashboard({ onTabChange }: { onTabChange: (tab: string) 
     <>
       <div className="dashboard-header">
         <div className="welcome-section">
-          <h1 className="title">{getGreeting()} {user?.name || 'bạn'} 👋</h1>
+          <h1 className="title">
+            {getGreeting()} {user?.name || "bạn"} 👋
+          </h1>
           <p className="subtitle">
-            {currentTime.toLocaleDateString('vi-VN', {
-              weekday: 'long',
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric',
-            })} - {currentTime.toLocaleTimeString('vi-VN')}
+            {currentTime.toLocaleDateString("vi-VN", {
+              weekday: "long",
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            })}{" "}
+            - {currentTime.toLocaleTimeString("vi-VN")}
           </p>
-          {error && <p className="subtitle" style={{ color: '#dc2626' }}>{error}</p>}
+          {error && <p className="subtitle">{error}</p>}
         </div>
 
         <div className="header-actions">
@@ -369,23 +359,41 @@ export default function Dashboard({ onTabChange }: { onTabChange: (tab: string) 
           </button>
           {showQuickActions && (
             <div className="quick-actions-dropdown">
-              {user?.role === 'teacher' ? (
+              {user?.role === "teacher" ? (
                 <>
-                  <button onClick={() => handleQuickAction('create-class')}>➕ Tạo lớp học</button>
-                  <button onClick={() => handleQuickAction('create-assignment')}>📝 Tạo bài tập</button>
-                  <button onClick={() => handleQuickAction('view-reports')}>📊 Xem dashboard</button>
-                  <button onClick={() => handleQuickAction('manage-students')}>👥 Quản lý sinh viên</button>
-                  <button onClick={() => handleQuickAction('create-lecture')}>📚 Quản lý bài giảng</button>
-                  <button onClick={() => handleQuickAction('settings')}>⚙️ Cài đặt</button>
+                  <button onClick={() => handleQuickAction("classes")}>
+                    ➕ Tạo lớp học
+                  </button>
+                  <button onClick={() => handleQuickAction("assignments")}>
+                    📝 Tạo bài tập
+                  </button>
+                  <button onClick={() => handleQuickAction("lectures")}>
+                    📚 Quản lý bài giảng
+                  </button>
+                  <button onClick={() => handleQuickAction("students")}>
+                    👥 Quản lý sinh viên
+                  </button>
+                  <button onClick={() => handleQuickAction("settings")}>
+                    ⚙️ Cài đặt
+                  </button>
                 </>
               ) : (
                 <>
-                  <button onClick={() => handleQuickAction('submitted-assignments')}>📋 Bài đã nộp</button>
-                  <button onClick={() => handleQuickAction('upcoming-deadlines')}>⏰ Deadline sắp tới</button>
-                  <button onClick={() => handleQuickAction('access-lectures')}>📖 Bài giảng</button>
-                  <button onClick={() => handleQuickAction('view-grades')}>📊 Xem điểm</button>
-                  <button onClick={() => handleQuickAction('schedule')}>📅 Lịch học</button>
-                  <button onClick={() => handleQuickAction('settings')}>⚙️ Cài đặt</button>
+                  <button onClick={() => handleQuickAction("lectures")}>
+                    📖 Bài giảng
+                  </button>
+                  <button onClick={() => handleQuickAction("assignments")}>
+                    📝 Bài tập
+                  </button>
+                  <button onClick={() => handleQuickAction("grades")}>
+                    📊 Xem điểm
+                  </button>
+                  <button onClick={() => handleQuickAction("schedule")}>
+                    📅 Lịch học
+                  </button>
+                  <button onClick={() => handleQuickAction("settings")}>
+                    ⚙️ Cài đặt
+                  </button>
                 </>
               )}
             </div>
@@ -402,7 +410,7 @@ export default function Dashboard({ onTabChange }: { onTabChange: (tab: string) 
                 <div className="stat-content">
                   <h3>{stat.value}</h3>
                   <p>{stat.title}</p>
-                  <div className="trend up">{stat.meta || 'Dữ liệu thật'}</div>
+                  <div className="trend up">{stat.meta || "Dữ liệu thật"}</div>
                 </div>
               </div>
             ))}
@@ -410,23 +418,23 @@ export default function Dashboard({ onTabChange }: { onTabChange: (tab: string) 
 
           <div className="today-box">
             <div className="section-header">
-              <h2>📌 {user?.role === 'teacher' ? 'Bài tập & deadline' : 'Bài tập của bạn'}</h2>
+              <h2>📌 Công việc của bạn</h2>
               <div className="filter-tabs">
                 <button
-                  className={selectedPeriod === 'today' ? 'active' : ''}
-                  onClick={() => setSelectedPeriod('today')}
+                  className={selectedPeriod === "today" ? "active" : ""}
+                  onClick={() => setSelectedPeriod("today")}
                 >
                   Hôm nay
                 </button>
                 <button
-                  className={selectedPeriod === 'week' ? 'active' : ''}
-                  onClick={() => setSelectedPeriod('week')}
+                  className={selectedPeriod === "week" ? "active" : ""}
+                  onClick={() => setSelectedPeriod("week")}
                 >
                   Tuần này
                 </button>
                 <button
-                  className={selectedPeriod === 'all' ? 'active' : ''}
-                  onClick={() => setSelectedPeriod('all')}
+                  className={selectedPeriod === "all" ? "active" : ""}
+                  onClick={() => setSelectedPeriod("all")}
                 >
                   Tất cả
                 </button>
@@ -442,21 +450,27 @@ export default function Dashboard({ onTabChange }: { onTabChange: (tab: string) 
                 </div>
               ) : (
                 visibleTasks.map((task) => (
-                  <div key={task.id} className={`task-item ${task.completed ? 'completed' : ''}`}>
+                  <div
+                    key={task.id}
+                    className={`task-item ${task.completed ? "completed" : ""}`}
+                  >
                     <div className="task-checkbox">
-                      <input type="checkbox" checked={task.completed} onChange={() => undefined} />
+                      <input
+                        type="checkbox"
+                        checked={task.completed}
+                        readOnly
+                      />
                     </div>
                     <div className="task-content">
                       <h4>{task.title}</h4>
                       <span className="task-class">📚 {task.className}</span>
                     </div>
                     <div className="task-meta">
-                      <span className={`deadline ${getPriorityColor(task.priority)}`}>
+                      <span
+                        className={`deadline ${getPriorityColor(task.priority)}`}
+                      >
                         {formatDeadline(task.dueDate)}
                       </span>
-                      <div className={`priority-badge ${task.priority}`}>
-                        {task.priority === 'high' ? '🔴' : task.priority === 'medium' ? '🟡' : '🟢'}
-                      </div>
                     </div>
                   </div>
                 ))
@@ -465,13 +479,16 @@ export default function Dashboard({ onTabChange }: { onTabChange: (tab: string) 
           </div>
 
           <div className="progress-section">
-            <h3>📈 {user?.role === 'teacher' ? 'Tiến độ giảng dạy' : 'Tiến độ học tập'}</h3>
+            <h3>📈 Tiến độ</h3>
             <div className="progress-items">
               {dashboardData.progress.map((item) => (
                 <div key={item.label} className="progress-item">
                   <span>{item.label}</span>
                   <div className="progress-bar">
-                    <div className="progress-fill" style={{ width: `${item.value}%` }}></div>
+                    <div
+                      className="progress-fill"
+                      style={{ width: `${item.value}%` }}
+                    ></div>
                   </div>
                   <span>{item.value}%</span>
                 </div>
@@ -484,28 +501,24 @@ export default function Dashboard({ onTabChange }: { onTabChange: (tab: string) 
           <div className="panel-card activities">
             <div className="panel-header">
               <h3>📣 Hoạt động gần đây</h3>
-              <button className="refresh-btn" onClick={() => void loadDashboard()}>
-                {refreshing ? '⏳' : '🔄'}
+              <button className="refresh-btn" disabled={refreshing}>
+                {refreshing ? "⏳" : "🔄"}
               </button>
             </div>
             <div className="activity-list">
-              {dashboardData.activities.length === 0 ? (
-                <div className="activity-item">
+              {dashboardData.activities.map((activity) => (
+                <div key={activity.id} className="activity-item">
+                  <div className="activity-icon">
+                    {getActivityIcon(activity.type)}
+                  </div>
                   <div className="activity-content">
-                    <p>Chưa có hoạt động gần đây</p>
+                    <p>{activity.message}</p>
+                    <span className="activity-time">
+                      {getRelativeTime(activity.createdAt)}
+                    </span>
                   </div>
                 </div>
-              ) : (
-                dashboardData.activities.map((activity) => (
-                  <div key={activity.id} className="activity-item">
-                    <div className="activity-icon">{getActivityIcon(activity.type)}</div>
-                    <div className="activity-content">
-                      <p>{activity.message}</p>
-                      <span className="activity-time">{getRelativeTime(activity.createdAt)}</span>
-                    </div>
-                  </div>
-                ))
-              )}
+              ))}
             </div>
           </div>
 
@@ -515,7 +528,7 @@ export default function Dashboard({ onTabChange }: { onTabChange: (tab: string) 
               {todaySchedule.length === 0 ? (
                 <div className="schedule-item">
                   <div className="event">
-                    <span className="event-title">Không có lịch học hôm nay</span>
+                    <span className="event-title">Không có lịch hôm nay</span>
                   </div>
                 </div>
               ) : (
@@ -525,7 +538,7 @@ export default function Dashboard({ onTabChange }: { onTabChange: (tab: string) 
                   return (
                     <div
                       key={item.id}
-                      className={`schedule-item ${status.key === 'ongoing' ? 'current' : ''}`}
+                      className={`schedule-item ${status.key === "ongoing" ? "current" : ""}`}
                     >
                       <div className="time">{item.startTime}</div>
                       <div className="event">
@@ -534,7 +547,9 @@ export default function Dashboard({ onTabChange }: { onTabChange: (tab: string) 
                           {item.subtitle} • {item.endTime}
                         </span>
                       </div>
-                      <div className={`status ${status.key}`}>{status.label}</div>
+                      <div className={`status ${status.key}`}>
+                        {status.label}
+                      </div>
                     </div>
                   );
                 })
@@ -557,26 +572,20 @@ export default function Dashboard({ onTabChange }: { onTabChange: (tab: string) 
           <div className="panel-card notifications">
             <h3>🔔 Thông báo</h3>
             <div className="notification-list">
-              {dashboardData.notifications.length === 0 ? (
-                <div className="notification-item">
+              {dashboardData.notifications.map((notification) => (
+                <div
+                  key={notification.id}
+                  className={`notification-item ${notification.isRead ? "" : "urgent"}`}
+                >
+                  <span className="notification-icon">
+                    {getNotificationIcon(notification.type)}
+                  </span>
                   <div>
-                    <p>Chưa có thông báo</p>
+                    <p>{notification.message}</p>
+                    <small>{getRelativeTime(notification.createdAt)}</small>
                   </div>
                 </div>
-              ) : (
-                dashboardData.notifications.map((notification) => (
-                  <div
-                    key={notification.id}
-                    className={`notification-item ${notification.isRead ? '' : 'urgent'}`}
-                  >
-                    <span className="notification-icon">{getNotificationIcon(notification.type)}</span>
-                    <div>
-                      <p>{notification.message}</p>
-                      <small>{getRelativeTime(notification.createdAt)}</small>
-                    </div>
-                  </div>
-                ))
-              )}
+              ))}
             </div>
           </div>
         </div>

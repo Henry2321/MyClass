@@ -1,7 +1,7 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { io, Socket } from 'socket.io-client';
-import { useAuth } from './AuthContext';
-import { SOCKET_PATH, SOCKET_URL } from '../utils/api';
+import React, { createContext, useContext, useEffect, useState } from "react";
+import { io, Socket } from "socket.io-client";
+import { useAuth } from "./AuthContext";
+import { SOCKET_PATH, SOCKET_URL } from "../utils/api";
 
 interface SocketContextType {
   socket: Socket | null;
@@ -15,7 +15,9 @@ const SocketContext = createContext<SocketContextType>({
 
 export const useSocket = () => useContext(SocketContext);
 
-export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const { isAuthenticated, user } = useAuth();
@@ -25,35 +27,36 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const socketOptions = {
         path: SOCKET_PATH,
         withCredentials: true,
-        transports: ['polling'], // Chỉ dùng polling
+        transports: ["polling"], // Chỉ dùng polling
         timeout: 30000, // Tăng timeout
         forceNew: true,
         reconnection: true,
         reconnectionAttempts: 10,
         reconnectionDelay: 2000,
-        upgrade: false // Tắt upgrade để tránh WebSocket issues
+        upgrade: false, // Tắt upgrade để tránh WebSocket issues
       };
 
-      const connectionTarget = SOCKET_URL || `${window.location.origin}${SOCKET_PATH}`;
-      console.log('Connecting to socket server:', connectionTarget);
+      const connectionTarget =
+        SOCKET_URL || `${window.location.origin}${SOCKET_PATH}`;
+      console.log("Connecting to socket server:", connectionTarget);
 
       const newSocket = SOCKET_URL
         ? io(SOCKET_URL, socketOptions)
         : io(socketOptions);
 
-      newSocket.on('connect', () => {
-        console.log('Connected to socket server');
+      newSocket.on("connect", () => {
+        console.log("Connected to socket server");
         setIsConnected(true);
-        newSocket.emit('join', user.id);
+        newSocket.emit("join", user.id);
       });
 
-      newSocket.on('disconnect', () => {
-        console.log('Disconnected from socket server');
+      newSocket.on("disconnect", () => {
+        console.log("Disconnected from socket server");
         setIsConnected(false);
       });
 
-      newSocket.on('connect_error', (error) => {
-        console.error('Socket connection error:', error);
+      newSocket.on("connect_error", (error) => {
+        console.error("Socket connection error:", error);
         setIsConnected(false);
       });
 

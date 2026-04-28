@@ -1,88 +1,104 @@
-import { useState } from 'react';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { SocketProvider } from './contexts/SocketContext';
-import { VoiceProvider } from './contexts/VoiceContext';
+import { useState } from "react";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { SocketProvider } from "./contexts/SocketContext";
+import { VoiceProvider } from "./contexts/VoiceContext";
 
-import Sidebar from './components/Sidebar';
-import Dashboard from './components/Dashboard';
-import Classes from './components/Classes-API';
-import Lectures from './components/Lectures';
-import Assignments from './components/Assignments';
-import Students from './components/Students';
-import Settings from './components/Settings';
+import Sidebar from "./components/Sidebar";
+import Dashboard from "./components/Dashboard";
+import Classes from "./components/Classes-API";
+import Lectures from "./components/Lectures";
+import Assignments from "./components/Assignments";
+import Students from "./components/Students";
+import Settings from "./components/Settings";
+import RightPanel from "./components/RightPanel";
 
-import SubmittedAssignments from './components/dashboard-pages/SubmittedAssignments';
-import Deadlines from './components/dashboard-pages/Deadlines';
-import Grades from './components/dashboard-pages/Grades';
-import Messages from './components/dashboard-pages/Messages';
-import Schedule from './components/dashboard-pages/Schedule';
+// Dashboard Sub-pages
+import SubmittedAssignments from "./components/dashboard-pages/SubmittedAssignments";
+import Deadlines from "./components/dashboard-pages/Deadlines";
+import Grades from "./components/dashboard-pages/Grades";
+import Messages from "./components/dashboard-pages/Messages";
+import Schedule from "./components/dashboard-pages/Schedule";
 
-import Login from './components/Login';
-import Register from './components/Register';
-import ClassroomView from './components/ClassroomView';
+import Login from "./components/Login";
+import Register from "./components/Register";
 
-import './App.css';
+import ClassroomView from "./components/ClassroomView"; // ⭐ PHASER CLASSROOM
+
+import "./App.css";
 
 function MainApp() {
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("dashboard");
+  const [activeClassId, setActiveClassId] = useState<string | null>(null);
 
   const { user, login, logout, isAuthenticated } = useAuth();
 
-  const handleTabChange = (tab: string) => {
-    setActiveTab(tab);
-    setIsSidebarOpen(false);
-  };
-
-  const handleLogout = () => {
-    setIsSidebarOpen(false);
-    logout();
-  };
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'dashboard':
-        return <Dashboard onTabChange={handleTabChange} />;
-      case 'classes':
-        return <Classes onJoinClassroom={() => handleTabChange('classroom')} />;
-      case 'lectures':
+      case "dashboard":
+        return <Dashboard onTabChange={setActiveTab} />;
+
+      case "classes":
+        return (
+          <Classes
+            onJoinClassroom={(classId) => {
+              setActiveClassId(classId);
+              setActiveTab("classroom");
+            }}
+          />
+        );
+
+      case "lectures":
         return <Lectures />;
-      case 'assignments':
+
+      case "assignments":
         return <Assignments />;
-      case 'students':
+
+      case "students":
         return <Students />;
-      case 'settings':
+
+      case "settings":
         return <Settings />;
-      case 'classroom':
-        return <ClassroomView />;
-      case 'submitted-assignments':
+
+      // ⭐ TRANG LỚP HỌC ẢO
+      case "classroom":
+        return <ClassroomView classId={activeClassId || ""} />;
+
+      // ⭐ TRANG DASHBOARD PHỤ
+      case "submitted-assignments":
         return <SubmittedAssignments />;
-      case 'deadlines':
+
+      case "deadlines":
         return <Deadlines />;
-      case 'grades':
+
+      case "grades":
         return <Grades />;
-      case 'messages':
+
+      case "messages":
         return <Messages />;
-      case 'schedule':
+
+      case "schedule":
         return <Schedule />;
+
       default:
-        return <Dashboard onTabChange={handleTabChange} />;
+        return <Dashboard onTabChange={setActiveTab} />;
     }
   };
 
+  // nếu chưa login
   if (!isAuthenticated) {
     return (
       <div className="auth-wrapper">
-        {authMode === 'login' ? (
+        {authMode === "login" ? (
           <Login
             onLogin={login}
-            onSwitchToRegister={() => setAuthMode('register')}
+            onSwitchToRegister={() => setAuthMode("register")}
           />
         ) : (
           <Register
             onRegister={login}
-            onSwitchToLogin={() => setAuthMode('login')}
+            onSwitchToLogin={() => setAuthMode("login")}
           />
         )}
       </div>
@@ -91,33 +107,16 @@ function MainApp() {
 
   return (
     <div className="app">
-      <button
-        type="button"
-        className="sidebar-toggle"
-        aria-label={isSidebarOpen ? 'Đóng menu' : 'Mở menu'}
-        aria-expanded={isSidebarOpen}
-        onClick={() => setIsSidebarOpen((value) => !value)}
-      >
-        {isSidebarOpen ? '✕' : '☰'}
-      </button>
-
       <Sidebar
         activeTab={activeTab}
-        onTabChange={handleTabChange}
+        onTabChange={setActiveTab}
         user={user}
-        onLogout={handleLogout}
-        isOpen={isSidebarOpen}
-        onClose={() => setIsSidebarOpen(false)}
+        onLogout={logout}
       />
 
-      <div
-        className={`sidebar-backdrop ${isSidebarOpen ? 'visible' : ''}`}
-        onClick={() => setIsSidebarOpen(false)}
-      />
+      <main className="main">{renderContent()}</main>
 
-      <main className="main">
-        <div className="main-inner">{renderContent()}</div>
-      </main>
+      <RightPanel />
     </div>
   );
 }

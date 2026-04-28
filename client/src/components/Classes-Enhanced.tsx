@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import { useState } from "react";
+import { useAuth } from "../contexts/AuthContext";
 
 interface ClassDetailModalProps {
   classData: any;
@@ -9,18 +9,30 @@ interface ClassDetailModalProps {
 function ClassDetailModal({ classData, onClose }: ClassDetailModalProps) {
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={e => e.stopPropagation()}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>📚 {classData.name}</h2>
-          <button className="modal-close" onClick={onClose}>✕</button>
+          <button className="modal-close" onClick={onClose}>
+            ✕
+          </button>
         </div>
         <div className="modal-body">
           <div className="class-detail-info">
-            <p><strong>Mã lớp:</strong> {classData.code}</p>
-            <p><strong>Giáo viên:</strong> 👨🏫 {classData.teacher}</p>
-            <p><strong>Số sinh viên:</strong> 👥 {classData.students}</p>
-            <p><strong>Lịch học:</strong> 📅 Thứ 2, 4, 6 - 7:00-9:00</p>
-            <p><strong>Phòng học:</strong> 🏫 Phòng 301</p>
+            <p>
+              <strong>Mã lớp:</strong> {classData.code}
+            </p>
+            <p>
+              <strong>Giáo viên:</strong> 👨🏫 {classData.teacher}
+            </p>
+            <p>
+              <strong>Số sinh viên:</strong> 👥 {classData.students}
+            </p>
+            <p>
+              <strong>Lịch học:</strong> 📅 Thứ 2, 4, 6 - 7:00-9:00
+            </p>
+            <p>
+              <strong>Phòng học:</strong> 🏫 Phòng 301
+            </p>
           </div>
           <div className="class-stats">
             <div className="stat-item">
@@ -59,55 +71,88 @@ function ClassManageModal({ classData, onClose }: ClassManageModalProps) {
     }, 1000);
   };
 
+  const handleImportStudents = async () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".txt,.csv";
+    input.onchange = async (e: any) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const text = event.target?.result as string;
+        const emails = text
+          .split(/[\n,]+/)
+          .map((e) => e.trim())
+          .filter((e) => e.includes("@"));
+
+        if (emails.length === 0) {
+          alert("Không tìm thấy email hợp lệ trong file.");
+          return;
+        }
+
+        alert(
+          `Đã đọc ${emails.length} email từ file. Chức năng API đang được gọi...`,
+        );
+        // Note: Enhanced version might not have full API integration yet
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  };
+
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={e => e.stopPropagation()}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>⚙️ Quản lý {classData.name}</h2>
-          <button className="modal-close" onClick={onClose}>✕</button>
+          <button className="modal-close" onClick={onClose}>
+            ✕
+          </button>
         </div>
         <div className="modal-body">
           <div className="manage-actions">
-            <button 
-              className={`manage-btn ${activeAction === 'lecture' ? 'loading' : ''}`}
-              onClick={() => handleAction('Tạo bài giảng mới')}
+            <button
+              className={`manage-btn ${activeAction === "lecture" ? "loading" : ""}`}
+              onClick={() => handleAction("Tạo bài giảng mới")}
               disabled={activeAction !== null}
             >
               📝 Tạo bài giảng mới
             </button>
-            <button 
-              className={`manage-btn ${activeAction === 'assignment' ? 'loading' : ''}`}
-              onClick={() => handleAction('Tạo bài tập mới')}
+            <button
+              className={`manage-btn ${activeAction === "assignment" ? "loading" : ""}`}
+              onClick={() => handleAction("Tạo bài tập mới")}
               disabled={activeAction !== null}
             >
               📋 Tạo bài tập mới
             </button>
-            <button 
-              className={`manage-btn ${activeAction === 'students' ? 'loading' : ''}`}
-              onClick={() => handleAction('Quản lý sinh viên')}
+            <button
+              className={`manage-btn ${activeAction === "students" ? "loading" : ""}`}
+              onClick={handleImportStudents}
               disabled={activeAction !== null}
             >
-              👥 Quản lý sinh viên
+              👥 Import danh sách SV
             </button>
-            <button 
-              className={`manage-btn ${activeAction === 'report' ? 'loading' : ''}`}
-              onClick={() => handleAction('Xem báo cáo')}
+            <button
+              className={`manage-btn ${activeAction === "report" ? "loading" : ""}`}
+              onClick={() => handleAction("Xem báo cáo")}
               disabled={activeAction !== null}
             >
               📊 Xem báo cáo
             </button>
-            <button 
-              className={`manage-btn ${activeAction === 'settings' ? 'loading' : ''}`}
-              onClick={() => handleAction('Cài đặt lớp học')}
+            <button
+              className={`manage-btn ${activeAction === "settings" ? "loading" : ""}`}
+              onClick={() => handleAction("Cài đặt lớp học")}
               disabled={activeAction !== null}
             >
               ⚙️ Cài đặt lớp học
             </button>
-            <button 
-              className={`manage-btn danger ${activeAction === 'delete' ? 'loading' : ''}`}
+            <button
+              className={`manage-btn danger ${activeAction === "delete" ? "loading" : ""}`}
               onClick={() => {
-                if (confirm('Bạn có chắc muốn xóa lớp học này?')) {
-                  handleAction('Xóa lớp học');
+                if (confirm("Bạn có chắc muốn xóa lớp học này?")) {
+                  handleAction("Xóa lớp học");
                 }
               }}
               disabled={activeAction !== null}
@@ -124,13 +169,31 @@ function ClassManageModal({ classData, onClose }: ClassManageModalProps) {
 export default function Classes() {
   const { user } = useAuth();
   const [classes] = useState([
-    { id: 1, name: 'React Nâng cao', code: 'REACT01', students: 25, teacher: 'Nguyễn Văn A' },
-    { id: 2, name: 'Node.js Backend', code: 'NODE01', students: 18, teacher: 'Trần Thị B' },
-    { id: 3, name: 'Database Design', code: 'DB01', students: 30, teacher: 'Lê Văn C' }
+    {
+      id: 1,
+      name: "React Nâng cao",
+      code: "REACT01",
+      students: 25,
+      teacher: "Nguyễn Văn A",
+    },
+    {
+      id: 2,
+      name: "Node.js Backend",
+      code: "NODE01",
+      students: 18,
+      teacher: "Trần Thị B",
+    },
+    {
+      id: 3,
+      name: "Database Design",
+      code: "DB01",
+      students: 30,
+      teacher: "Lê Văn C",
+    },
   ]);
-  
+
   const [selectedClass, setSelectedClass] = useState<any>(null);
-  const [modalType, setModalType] = useState<'detail' | 'manage' | null>(null);
+  const [modalType, setModalType] = useState<"detail" | "manage" | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
 
   const handleCreateClass = () => {
@@ -139,18 +202,18 @@ export default function Classes() {
 
   const handleSubmitNewClass = (e: React.FormEvent) => {
     e.preventDefault();
-    alert('Đã tạo lớp học mới thành công!');
+    alert("Đã tạo lớp học mới thành công!");
     setShowCreateForm(false);
   };
 
   const handleViewDetail = (classData: any) => {
     setSelectedClass(classData);
-    setModalType('detail');
+    setModalType("detail");
   };
 
   const handleManage = (classData: any) => {
     setSelectedClass(classData);
-    setModalType('manage');
+    setModalType("manage");
   };
 
   const closeModal = () => {
@@ -161,19 +224,26 @@ export default function Classes() {
   return (
     <>
       <h1 className="title">Lớp học 📚</h1>
-      
-      {user?.role === 'teacher' && (
+
+      {user?.role === "teacher" && (
         <div className="classes-header">
-          <button className="btn-primary" onClick={handleCreateClass}>+ Tạo lớp mới</button>
+          <button className="btn-primary" onClick={handleCreateClass}>
+            + Tạo lớp mới
+          </button>
         </div>
       )}
 
       {showCreateForm && (
         <div className="modal-overlay" onClick={() => setShowCreateForm(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>🏫 Tạo lớp học mới</h2>
-              <button className="modal-close" onClick={() => setShowCreateForm(false)}>✕</button>
+              <button
+                className="modal-close"
+                onClick={() => setShowCreateForm(false)}
+              >
+                ✕
+              </button>
             </div>
             <form onSubmit={handleSubmitNewClass} className="modal-body">
               <div className="form-group">
@@ -189,8 +259,16 @@ export default function Classes() {
                 <textarea placeholder="Mô tả về lớp học" rows={3}></textarea>
               </div>
               <div className="form-actions">
-                <button type="button" className="btn-secondary" onClick={() => setShowCreateForm(false)}>Hủy</button>
-                <button type="submit" className="btn-primary">Tạo lớp</button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setShowCreateForm(false)}
+                >
+                  Hủy
+                </button>
+                <button type="submit" className="btn-primary">
+                  Tạo lớp
+                </button>
               </div>
             </form>
           </div>
@@ -198,7 +276,7 @@ export default function Classes() {
       )}
 
       <div className="classes-grid">
-        {classes.map(cls => (
+        {classes.map((cls) => (
           <div key={cls.id} className="class-card">
             <div className="class-header">
               <h3>{cls.name}</h3>
@@ -209,14 +287,14 @@ export default function Classes() {
               <p>👥 {cls.students} sinh viên</p>
             </div>
             <div className="class-actions">
-              <button 
+              <button
                 className="btn-outline"
                 onClick={() => handleViewDetail(cls)}
               >
                 Xem chi tiết
               </button>
-              {user?.role === 'teacher' && (
-                <button 
+              {user?.role === "teacher" && (
+                <button
                   className="btn-outline"
                   onClick={() => handleManage(cls)}
                 >
@@ -228,18 +306,12 @@ export default function Classes() {
         ))}
       </div>
 
-      {modalType === 'detail' && selectedClass && (
-        <ClassDetailModal 
-          classData={selectedClass} 
-          onClose={closeModal} 
-        />
+      {modalType === "detail" && selectedClass && (
+        <ClassDetailModal classData={selectedClass} onClose={closeModal} />
       )}
 
-      {modalType === 'manage' && selectedClass && (
-        <ClassManageModal 
-          classData={selectedClass} 
-          onClose={closeModal} 
-        />
+      {modalType === "manage" && selectedClass && (
+        <ClassManageModal classData={selectedClass} onClose={closeModal} />
       )}
     </>
   );

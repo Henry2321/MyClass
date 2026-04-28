@@ -1,11 +1,17 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
-import { API_BASE_URL } from '../utils/api';
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  type ReactNode,
+} from "react";
+import { API_BASE_URL } from "../utils/api";
 
 interface User {
   id: string;
   name: string;
   email: string;
-  role: 'teacher' | 'student';
+  role: "teacher" | "student";
 }
 
 interface AuthContextType {
@@ -21,7 +27,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
 };
@@ -36,20 +42,20 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
   useEffect(() => {
     // Check if user is logged in on app start
-    const token = localStorage.getItem('token');
-    const savedUser = localStorage.getItem('user');
-    
+    const token = localStorage.getItem("token");
+    const savedUser = localStorage.getItem("user");
+
     if (token && savedUser) {
       try {
         JSON.parse(savedUser);
         // Verify token is still valid by calling /api/auth/me
         verifyToken(token);
       } catch (error) {
-        console.error('Error parsing saved user:', error);
+        console.error("Error parsing saved user:", error);
         clearAuthData();
       }
     }
-    
+
     setLoading(false);
   }, []);
 
@@ -57,31 +63,31 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
         headers: {
-          'Authorization': `Bearer ${token}`
-        }
+          Authorization: `Bearer ${token}`,
+        },
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         setUser({
           id: data.user.id,
           name: data.user.name,
           email: data.user.email,
-          role: data.user.role
+          role: data.user.role,
         });
       } else {
         // Token không hợp lệ, xóa dữ liệu
         clearAuthData();
       }
     } catch (error) {
-      console.error('Token verification failed:', error);
+      console.error("Token verification failed:", error);
       clearAuthData();
     }
   };
 
   const clearAuthData = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
     setUser(null);
   };
 
@@ -91,7 +97,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
   const updateUser = (userData: User) => {
     setUser(userData);
-    localStorage.setItem('user', JSON.stringify(userData));
+    localStorage.setItem("user", JSON.stringify(userData));
   };
 
   const logout = () => {
@@ -103,7 +109,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     login,
     logout,
     updateUser,
-    isAuthenticated: !!user
+    isAuthenticated: !!user,
   };
 
   if (loading) {
@@ -115,9 +121,5 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     );
   }
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

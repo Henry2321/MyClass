@@ -10,7 +10,7 @@ interface VoiceContextType {
   isPushingToTalk: boolean;
   setIsPushingToTalk: (is: boolean) => void;
   remoteStreams: Map<string, MediaStream>;
-  refreshCallWithPeer: (remotePeerId: string) => void;
+  makeCall: (remotePeerId: string, stream: MediaStream) => void;
 }
 
 const VoiceContext = createContext<VoiceContextType>({
@@ -20,7 +20,7 @@ const VoiceContext = createContext<VoiceContextType>({
   isPushingToTalk: false,
   setIsPushingToTalk: () => {},
   remoteStreams: new Map(),
-  refreshCallWithPeer: () => {},
+  makeCall: () => {},
 });
 
 export const useVoice = () => useContext(VoiceContext);
@@ -37,71 +37,24 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
   const activeCalls = useRef<Map<string, any>>(new Map());
   const myStreamRef = useRef<MediaStream | null>(null);
-  const pendingCallPeerIds = useRef<Set<string>>(new Set());
-  const peerRef = useRef<any>(null);
 
   // Đồng bộ myStream state vào ref
   useEffect(() => {
     myStreamRef.current = myStream;
+    // Khi myStream thay đổi, cập nhật trạng thái mute của track
     if (myStream) {
       myStream.getAudioTracks().forEach(track => {
         track.enabled = isPushingToTalk;
       });
-      // Gọi lại cho tất cả pending peers khi stream sẵn sàng
-      if (pendingCallPeerIds.current.size > 0 && peerRef.current) {
-        pendingCallPeerIds.current.forEach(peerId => {
-          const call = peerRef.current.call(peerId, myStream);
-          if (call) {
-            call.on('stream', (remoteStream: MediaStream) => {
-              setRemoteStreams(prev => {
-                const next = new Map(prev);
-                next.set(peerId, remoteStream);
-                return next;
-              });
-            });
-            activeCalls.current.set(peerId, call);
-          }
-        });
-        pendingCallPeerIds.current.clear();
-      }
     }
   }, [myStream, isPushingToTalk]);
 
-  // Tái kết nối call với 1 peer cụ thể (dùng khi stream thay đổi)
-  const refreshCallWithPeer = (remotePeerId: string) => {
-    if (!peerRef.current || !myStreamRef.current) return
-    const existing = activeCalls.current.get(remotePeerId)
-    if (existing) existing.close()
-    const call = peerRef.current.call(remotePeerId, myStreamRef.current)
-    if (!call) return
-    call.on('stream', (remoteStream: MediaStream) => {
-      setRemoteStreams(prev => {
-        const next = new Map(prev)
-        next.set(remotePeerId, remoteStream)
-        return next
-      })
-    })
-    activeCalls.current.set(remotePeerId, call)
-  }
-
   // Hàm để thực hiện cuộc gọi và lưu vào ref
   const makeCall = (remotePeerId: string, stream: MediaStream) => {
-    if (!peer) {
-      // Lưu lại để gọi sau khi peer sẵn sàng
-      pendingCallPeerIds.current.add(remotePeerId);
-      return;
-    }
-    // Hủy cuộc gọi cũ nếu có
-    if (activeCalls.current.has(remotePeerId)) {
-      activeCalls.current.get(remotePeerId)?.close();
-    }
+    if (!peer) return;
     console.log('Initiating call to:', remotePeerId);
     const call = peer.call(remotePeerId, stream);
-    if (!call) {
-      console.warn('peer.call returned null for:', remotePeerId);
-      return;
-    }
-    
+
     call.on('stream', (remoteStream: MediaStream) => {
       console.log('Received remote stream from (outgoing call):', remotePeerId);
       setRemoteStreams(prev => {
@@ -150,23 +103,6 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         newPeer.on('open', (id: string) => {
           console.log('PeerJS connected with ID:', id);
-          // Gọi lại các peer đang chờ nếu stream đã sẵn sàng
-          if (myStreamRef.current && pendingCallPeerIds.current.size > 0) {
-            pendingCallPeerIds.current.forEach(peerId => {
-              const call = newPeer.call(peerId, myStreamRef.current!);
-              if (call) {
-                call.on('stream', (remoteStream: MediaStream) => {
-                  setRemoteStreams(prev => {
-                    const next = new Map(prev);
-                    next.set(peerId, remoteStream);
-                    return next;
-                  });
-                });
-                activeCalls.current.set(peerId, call);
-              }
-            });
-            pendingCallPeerIds.current.clear();
-          }
         });
 
         newPeer.on('error', (err: any) => {
@@ -175,15 +111,11 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         newPeer.on('call', (call: any) => {
           console.log('Receiving call from:', call.peer);
-          // Answer với stream hiện tại hoặc silent stream để PeerJS kết nối được
-          const answerStream = myStreamRef.current || (() => {
-            try {
-              const ctx = new AudioContext()
-              return ctx.createMediaStreamDestination().stream
-            } catch { return undefined }
-          })()
-          call.answer(answerStream)
-          
+
+          // QUAN TRỌNG: Luôn trả lời cuộc gọi ngay cả khi myStream chưa có
+          // để thiết lập kết nối nhận âm thanh từ người gọi
+          call.answer(myStreamRef.current || undefined);
+
           call.on('stream', (remoteStream: MediaStream) => {
             console.log('Received remote stream from (incoming call):', call.peer);
             setRemoteStreams(prev => {
@@ -194,15 +126,9 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           });
 
           activeCalls.current.set(call.peer, call);
-
-          // Nếu chưa có stream lúc answer, gọi lại ngược khi stream sẵn sàng
-          if (!myStreamRef.current) {
-            pendingCallPeerIds.current.add(call.peer);
-          }
         });
 
         if (isMounted) {
-          peerRef.current = newPeer;
           setPeer(newPeer);
         } else {
           newPeer.destroy();
@@ -223,16 +149,14 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [socket?.id, user?.id]);
 
   return (
-    <VoiceContext.Provider value={{ 
-      peer, 
-      myStream, 
-      setMyStream, 
-      isPushingToTalk, 
+    <VoiceContext.Provider value={{
+      peer,
+      myStream,
+      setMyStream,
+      isPushingToTalk,
       setIsPushingToTalk,
       remoteStreams,
-      // @ts-ignore - Exporting internal helper for ClassCanvas
       makeCall,
-      refreshCallWithPeer
     }}>
       {children}
     </VoiceContext.Provider>

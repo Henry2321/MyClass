@@ -1,42 +1,47 @@
-const express = require('express');
-const multer = require('multer');
-const Assignment = require('../models/Assignment');
-const Class = require('../models/Class');
-const { auth, teacherAuth } = require('../middleware/auth');
+const express = require("express");
+const multer = require("multer");
+const Assignment = require("../models/Assignment");
+const Class = require("../models/Class");
+const { auth, teacherAuth } = require("../middleware/auth");
 const {
   createActivity,
-  createNotification,
   notifyClassStudents,
-} = require('../utils/notifications');
+} = require("../utils/notifications");
 
 const router = express.Router();
 
+// Multer config
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/assignments/');
+    cb(null, "uploads/assignments/");
   },
   filename: (req, file, cb) => {
-    cb(null, `${Date.now()}-${file.originalname}`);
+    cb(null, Date.now() + "-" + file.originalname);
   },
 });
 
 const upload = multer({ storage });
 
 // Get all assignments for current user
-router.get('/', auth, async (req, res) => {
+router.get("/", auth, async (req, res) => {
   try {
     let assignments;
-    if (req.user.role === 'teacher') {
+    if (req.user.role === "teacher") {
       assignments = await Assignment.find({ teacher: req.user._id })
-        .populate('class', 'name')
+        .populate("class", "name")
         .sort({ createdAt: -1 });
     } else {
-      const Class = require('../models/Class');
-      const myClasses = await Class.find({ students: req.user._id }).select('_id');
-      const classIds = myClasses.map(c => c._id);
-      assignments = await Assignment.find({ class: { $in: classIds }, isPublished: true })
-        .populate('class', 'name')
-        .populate('teacher', 'name')
+      const Class = require("../models/Class");
+      const myClasses = await Class.find({ students: req.user._id }).select(
+        "_id",
+      );
+      const classIds = myClasses.map((c) => c._id);
+      assignments = await Assignment.find({
+        class: { $in: classIds },
+        isPublished: true,
+      })
+        .populate("class", "name")
+        .populate("teacher", "name")
         .sort({ dueDate: 1 });
     }
     res.json(assignments);
@@ -46,12 +51,20 @@ router.get('/', auth, async (req, res) => {
 });
 
 // Download assignment file
-router.get('/:id/files/:filename', auth, async (req, res) => {
+router.get("/:id/files/:filename", auth, async (req, res) => {
   try {
     const assignment = await Assignment.findById(req.params.id);
-    if (!assignment) return res.status(404).json({ message: 'Assignment not found' });
-    const filePath = require('path').resolve(__dirname, '..', 'uploads', 'assignments', req.params.filename);
-    if (!require('fs').existsSync(filePath)) return res.status(404).json({ message: 'File not found' });
+    if (!assignment)
+      return res.status(404).json({ message: "Assignment not found" });
+    const filePath = require("path").resolve(
+      __dirname,
+      "..",
+      "uploads",
+      "assignments",
+      req.params.filename,
+    );
+    if (!require("fs").existsSync(filePath))
+      return res.status(404).json({ message: "File not found" });
     res.download(filePath);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -59,16 +72,27 @@ router.get('/:id/files/:filename', auth, async (req, res) => {
 });
 
 // Download submission file
-router.get('/:id/submissions/files/:filename', auth, async (req, res) => {
+router.get("/:id/submissions/files/:filename", auth, async (req, res) => {
   try {
     const assignment = await Assignment.findById(req.params.id);
-    if (!assignment) return res.status(404).json({ message: 'Assignment not found' });
+    if (!assignment)
+      return res.status(404).json({ message: "Assignment not found" });
     // Only teacher of this assignment or the submitting student can download
     const isTeacher = assignment.teacher.toString() === req.user._id.toString();
-    const isStudent = assignment.submissions.some(s => s.student.toString() === req.user._id.toString());
-    if (!isTeacher && !isStudent) return res.status(403).json({ message: 'Access denied' });
-    const filePath = require('path').resolve(__dirname, '..', 'uploads', 'assignments', req.params.filename);
-    if (!require('fs').existsSync(filePath)) return res.status(404).json({ message: 'File not found' });
+    const isStudent = assignment.submissions.some(
+      (s) => s.student.toString() === req.user._id.toString(),
+    );
+    if (!isTeacher && !isStudent)
+      return res.status(403).json({ message: "Access denied" });
+    const filePath = require("path").resolve(
+      __dirname,
+      "..",
+      "uploads",
+      "assignments",
+      req.params.filename,
+    );
+    if (!require("fs").existsSync(filePath))
+      return res.status(404).json({ message: "File not found" });
     res.download(filePath);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -76,27 +100,30 @@ router.get('/:id/submissions/files/:filename', auth, async (req, res) => {
 });
 
 // Delete assignment (teacher only)
-router.delete('/:id', auth, teacherAuth, async (req, res) => {
+router.delete("/:id", auth, teacherAuth, async (req, res) => {
   try {
     const assignment = await Assignment.findById(req.params.id);
-    if (!assignment || assignment.teacher.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: 'Access denied' });
+    if (
+      !assignment ||
+      assignment.teacher.toString() !== req.user._id.toString()
+    ) {
+      return res.status(403).json({ message: "Access denied" });
     }
     await Assignment.findByIdAndDelete(req.params.id);
-    res.json({ message: 'Deleted' });
+    res.json({ message: "Deleted" });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
 // Get assignments by class
-router.get('/class/:classId', auth, async (req, res) => {
+router.get("/class/:classId", auth, async (req, res) => {
   try {
     const assignments = await Assignment.find({
       class: req.params.classId,
       isPublished: true,
     })
-      .populate('teacher', 'name')
+      .populate("teacher", "name")
       .sort({ dueDate: 1 });
 
     res.json(assignments);
@@ -106,21 +133,25 @@ router.get('/class/:classId', auth, async (req, res) => {
 });
 
 // Create assignment (teacher only)
-router.post('/', auth, teacherAuth, upload.array('files'), async (req, res) => {
+router.post("/", auth, teacherAuth, upload.array("files"), async (req, res) => {
   try {
     const { title, description, classId, dueDate, maxScore } = req.body;
 
     const classData = await Class.findById(classId);
-    if (!classData || classData.teacher.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: 'Access denied' });
+    if (
+      !classData ||
+      classData.teacher.toString() !== req.user._id.toString()
+    ) {
+      return res.status(403).json({ message: "Access denied" });
     }
 
-    const files = req.files?.map((file) => ({
-      filename: file.filename,
-      originalName: file.originalname,
-      path: file.path,
-      size: file.size,
-    })) || [];
+    const files =
+      req.files?.map((file) => ({
+        filename: file.filename,
+        originalName: file.originalname,
+        path: file.path,
+        size: file.size,
+      })) || [];
 
     const assignment = new Assignment({
       title,
@@ -133,11 +164,12 @@ router.post('/', auth, teacherAuth, upload.array('files'), async (req, res) => {
     });
 
     await assignment.save();
-    await assignment.populate('teacher', 'name');
+    await assignment.populate("teacher", "name");
 
+    // Create activity
     await createActivity(
       req.user._id,
-      'assignment_created',
+      "assignment_created",
       `Tạo bài tập: ${title}`,
       { classId, assignmentId: assignment._id },
     );
@@ -149,23 +181,28 @@ router.post('/', auth, teacherAuth, upload.array('files'), async (req, res) => {
 });
 
 // Publish assignment
-router.patch('/:id/publish', auth, teacherAuth, async (req, res) => {
+router.patch("/:id/publish", auth, teacherAuth, async (req, res) => {
   try {
-    const assignment = await Assignment.findById(req.params.id).populate('class');
-
-    if (!assignment || assignment.teacher.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: 'Access denied' });
+    const assignment = await Assignment.findById(req.params.id).populate(
+      "class",
+    );
+    if (
+      !assignment ||
+      assignment.teacher.toString() !== req.user._id.toString()
+    ) {
+      return res.status(403).json({ message: "Access denied" });
     }
 
     assignment.isPublished = true;
     await assignment.save();
 
+    // Notify students
     await notifyClassStudents(
       assignment.class._id,
       req.user._id,
-      'Bài tập mới',
+      "Bài tập mới",
       `Bài tập "${assignment.title}" đã được giao`,
-      'assignment',
+      "assignment",
       { assignmentId: assignment._id },
     );
 
@@ -176,25 +213,31 @@ router.patch('/:id/publish', auth, teacherAuth, async (req, res) => {
 });
 
 // Submit assignment (student)
-router.post('/:id/submit', auth, upload.array('files'), async (req, res) => {
+router.post("/:id/submit", auth, upload.array("files"), async (req, res) => {
   try {
     const { content } = req.body;
-    const assignment = await Assignment.findById(req.params.id).populate('class', 'name');
+    const assignment = await Assignment.findById(req.params.id).populate(
+      "class",
+      "name",
+    );
 
     if (!assignment) {
-      return res.status(404).json({ message: 'Assignment not found' });
+      return res.status(404).json({ message: "Assignment not found" });
     }
 
     if (new Date() > assignment.dueDate) {
-      return res.status(400).json({ message: 'Assignment deadline has passed' });
+      return res
+        .status(400)
+        .json({ message: "Assignment deadline has passed" });
     }
 
-    const files = req.files?.map((file) => ({
-      filename: file.filename,
-      originalName: file.originalname,
-      path: file.path,
-      size: file.size,
-    })) || [];
+    const files =
+      req.files?.map((file) => ({
+        filename: file.filename,
+        originalName: file.originalname,
+        path: file.path,
+        size: file.size,
+      })) || [];
 
     const existingSubmission = assignment.submissions.find(
       (submission) => submission.student.toString() === req.user._id.toString(),
@@ -215,9 +258,10 @@ router.post('/:id/submit', auth, upload.array('files'), async (req, res) => {
 
     await assignment.save();
 
+    // Create activity
     await createActivity(
       req.user._id,
-      'assignment_submitted',
+      "assignment_submitted",
       `Nộp bài tập: ${assignment.title}`,
       { classId: assignment.class._id, assignmentId: assignment._id },
     );
@@ -225,59 +269,70 @@ router.post('/:id/submit', auth, upload.array('files'), async (req, res) => {
     await createNotification(
       assignment.teacher,
       req.user._id,
-      'Bài nộp mới',
+      "Bài nộp mới",
       `${req.user.name} đã nộp bài "${assignment.title}"`,
-      'assignment',
+      "assignment",
       { classId: assignment.class._id, assignmentId: assignment._id },
     );
 
-    res.json({ message: 'Assignment submitted successfully' });
+    res.json({ message: "Assignment submitted successfully" });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
 // Grade assignment (teacher only)
-router.patch('/:id/grade/:submissionId', auth, teacherAuth, async (req, res) => {
-  try {
-    const { score, feedback } = req.body;
-    const assignment = await Assignment.findById(req.params.id).populate('class', 'name');
+router.patch(
+  "/:id/grade/:submissionId",
+  auth,
+  teacherAuth,
+  async (req, res) => {
+    try {
+      const { score, feedback } = req.body;
+      const assignment = await Assignment.findById(req.params.id).populate(
+        "class",
+        "name",
+      );
 
-    if (!assignment || assignment.teacher.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: 'Access denied' });
+      if (
+        !assignment ||
+        assignment.teacher.toString() !== req.user._id.toString()
+      ) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const submission = assignment.submissions.id(req.params.submissionId);
+      if (!submission) {
+        return res.status(404).json({ message: "Submission not found" });
+      }
+
+      submission.score = score;
+      submission.feedback = feedback;
+      submission.gradedAt = new Date();
+
+      await assignment.save();
+
+      await createActivity(
+        req.user._id,
+        "assignment_graded",
+        `Chấm bài: ${assignment.title}`,
+        { classId: assignment.class._id, assignmentId: assignment._id },
+      );
+
+      await createNotification(
+        submission.student,
+        req.user._id,
+        "Bài tập đã được chấm",
+        `Bài "${assignment.title}" đã được chấm điểm`,
+        "grade",
+        { classId: assignment.class._id, assignmentId: assignment._id },
+      );
+
+      res.json({ message: "Assignment graded successfully" });
+    } catch (error) {
+      res.status(500).json({ message: error.message });
     }
-
-    const submission = assignment.submissions.id(req.params.submissionId);
-    if (!submission) {
-      return res.status(404).json({ message: 'Submission not found' });
-    }
-
-    submission.score = score;
-    submission.feedback = feedback;
-    submission.gradedAt = new Date();
-
-    await assignment.save();
-
-    await createActivity(
-      req.user._id,
-      'assignment_graded',
-      `Chấm bài: ${assignment.title}`,
-      { classId: assignment.class._id, assignmentId: assignment._id },
-    );
-
-    await createNotification(
-      submission.student,
-      req.user._id,
-      'Bài tập đã được chấm',
-      `Bài "${assignment.title}" đã được chấm điểm`,
-      'grade',
-      { classId: assignment.class._id, assignmentId: assignment._id },
-    );
-
-    res.json({ message: 'Assignment graded successfully' });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
+  },
+);
 
 module.exports = router;

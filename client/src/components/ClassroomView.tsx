@@ -1,11 +1,14 @@
 import ClassCanvas from "./ClassCanvas"
 import { useVoice } from "../contexts/VoiceContext"
 
-export default function ClassroomView(){
+interface ClassroomViewProps {
+  classId: string;
+}
+
+export default function ClassroomView({ classId }: ClassroomViewProps){
   const { remoteStreams } = useVoice()
 
   return(
-
     <div
       style={{
         position: "fixed",
@@ -28,12 +31,11 @@ export default function ClassroomView(){
             key={peerId} 
             autoPlay 
             controls={false}
-            muted={false} // Đảm bảo không bị mute
+            muted={false}
             ref={(el) => { 
               if (el) {
                 el.srcObject = stream;
-                el.volume = 1.0; // Đảm bảo âm lượng tối đa
-                // Ép trình duyệt phát âm thanh (xử lý autoplay policy)
+                el.volume = 1.0;
                 el.play().catch(e => {
                   console.error("Audio play failed for:", peerId, e);
                 });
@@ -52,10 +54,8 @@ export default function ClassroomView(){
         alignItems: "center",
         overflow: "hidden"
       }}>
-        <ClassCanvas />
+        <ClassCanvas classId={classId} />
       </div>
     </div>
-
   )
-
 }

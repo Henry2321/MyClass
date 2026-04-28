@@ -5,12 +5,17 @@ const helmet = require("helmet");
 const compression = require("compression");
 const rateLimit = require("express-rate-limit");
 const http = require("http");
+const net = require("net");
 const path = require("path");
 const https = require("https");
 const fs = require("fs");
 const socketIo = require("socket.io");
 const { ExpressPeerServer } = require("peer");
 const { errorHandler, notFound } = require("./middleware/errorHandler");
+const { hasProfanity, isSpamming } = require("./utils/moderation");
+const Attendance = require("./models/Attendance");
+const Class = require("./models/Class");
+const User = require("./models/User");
 require("dotenv").config();
 
 const app = express();
@@ -82,13 +87,17 @@ app.set("trust proxy", 1);
 // PeerJS Server
 const peerServer = ExpressPeerServer(server, {
   debug: true,
-  path: '/peerjs',
-  corsOptions: {
-    origin: corsOrigin,
-    credentials: true
-  }
+  path: "/peerjs",
 });
 app.use(peerServer);
+
+// PeerJS re-emits listen/WebSocket errors via app.emit('error'). Without a listener, Node exits with "Unhandled 'error' event".
+peerServer.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    return;
+  }
+  console.error("[PeerJS]", err.message);
+});
 
 const io = socketIo(server, {
   cors: {
@@ -208,11 +217,89 @@ io.on("connection", (socket) => {
   });
 
   // Handle classroom movement
-  socket.on("join_classroom", ({ classId, user }) => {
+  socket.on("join_classroom", async ({ classId, user }) => {
     socket.join(`class_${classId}`);
 
     if (!rooms.has(classId)) {
       rooms.set(classId, new Map());
+    }
+
+    // AI Automatic Attendance
+    if (user && user.role !== "teacher") {
+      try {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        let realUserId = user.dbId || user.id;
+
+        // Nếu không có ID nhưng có MSSV, tìm User theo MSSV
+        if (!realUserId && user.mssv) {
+          const foundUser = await User.findOne({ mssv: user.mssv });
+          if (foundUser) {
+            realUserId = foundUser._id;
+          }
+        }
+
+        // Cập nhật MSSV cho User nếu đã có ID nhưng chưa có MSSV (hoặc cập nhật MSSV mới)
+        if (realUserId && user.mssv) {
+          await User.findByIdAndUpdate(realUserId, { mssv: user.mssv });
+        }
+
+        if (realUserId) {
+          // Check if already attended today
+          const existingAttendance = await Attendance.findOne({
+            class: classId,
+            student: realUserId,
+            date: { $gte: today },
+          });
+
+          if (!existingAttendance) {
+            const classData = await Class.findById(classId).populate(
+              "students",
+              "mssv",
+            );
+
+            // AI đối soát bằng MSSV: Kiểm tra xem MSSV nhập vào có nằm trong danh sách MSSV của lớp không
+            const isInClassList =
+              classData && classData.students.some((s) => s.mssv === user.mssv);
+
+            if (isInClassList) {
+              await Attendance.create({
+                class: classId,
+                student: realUserId,
+                date: today,
+                status: "present",
+                joinedAt: new Date(),
+              });
+
+              console.log(
+                `AI Attendance Auto: Marked ${user.name} (MSSV: ${user.mssv}) as present`,
+              );
+
+              socket.emit("new_message", {
+                id: `system-attendance-auto-${Date.now()}`,
+                sender: "Hệ thống AI",
+                content: `[TỰ ĐỘNG] Xác nhận: Sinh viên ${user.name} (MSSV: ${user.mssv}) đã được điểm danh thành công!`,
+                timestamp: new Date().toLocaleTimeString("vi-VN", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }),
+                type: "system",
+              });
+            } else {
+              console.log(
+                `AI Attendance: MSSV ${user.mssv} not found in class ${classId}`,
+              );
+            }
+          }
+        } else {
+          console.log(
+            `AI Attendance: Could not find user with MSSV ${user.mssv}`,
+          );
+        }
+      } catch (err) {
+        console.error("AI Auto Attendance Error:", err);
+      }
     }
 
     const roomPlayers = rooms.get(classId);
@@ -220,7 +307,8 @@ io.on("connection", (socket) => {
 
     const playerData = {
       id: socket.id,
-      userId: user.id,
+      userId: user.dbId || user.id,
+      mssv: user.mssv || "",
       name: user.name,
       avatar: user.avatar || "adam",
       peerId: user.peerId, // Lưu Peer ID để WebRTC có thể gọi
@@ -359,62 +447,101 @@ io.on("connection", (socket) => {
     },
   );
 
-  socket.on('kick_player', ({ classId, targetSocketId }) => {
-    const room = rooms.get(classId)
-    if (!room) return
+  socket.on("send_message", async ({ classId, message }) => {
+    const room = rooms.get(classId);
+    if (!room) return;
 
-    const requester = room.get(socket.id)
-    const target = room.get(targetSocketId)
+    const player = room.get(socket.id);
+    if (!player) return;
 
-    if (!requester || requester.role !== 'teacher') {
-      socket.emit('teacher_media_control_error', { message: 'Chỉ giáo viên mới có quyền kick học sinh.' })
-      return
+    // AI Content Moderation
+    if (hasProfanity(message.content)) {
+      socket.emit("new_message", {
+        id: `system-${Date.now()}`,
+        sender: "Hệ thống AI",
+        content: "Tin nhắn của bạn chứa từ ngữ không phù hợp và đã bị chặn.",
+        timestamp: new Date().toLocaleTimeString("vi-VN", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        type: "system",
+      });
+      return;
     }
 
-    if (!target || target.role !== 'student') {
-      socket.emit('teacher_media_control_error', { message: 'Chỉ có thể kick học sinh.' })
-      return
+    if (isSpamming(player.userId, message.content)) {
+      socket.emit("new_message", {
+        id: `system-${Date.now()}`,
+        sender: "Hệ thống AI",
+        content:
+          "Bạn đang gửi tin nhắn quá nhanh hoặc bị trùng lặp. Vui lòng thử lại sau.",
+        timestamp: new Date().toLocaleTimeString("vi-VN", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        type: "system",
+      });
+      return;
     }
 
-    const targetName = target.name
+    // AI Attendance via Chat
+    const attendanceRegex = /điểm danh\s+(.+)\s+(\d+)/i;
+    const match = message.content.match(attendanceRegex);
+    if (match && player.role !== "teacher") {
+      const studentName = match[1].trim();
+      const studentIdStr = match[2].trim();
 
-    // Xóa khỏi room trước
-    room.delete(targetSocketId)
+      try {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
 
-    // Thông báo cho người bị kick
-    io.to(targetSocketId).emit('you_were_kicked', { teacherName: requester.name })
+        const existingAttendance = await Attendance.findOne({
+          class: classId,
+          student: player.userId,
+          date: { $gte: today },
+        });
 
-    // Thông báo cho tất cả mọi người trong phòng
-    io.to(`class_${classId}`).emit('player_left', targetSocketId)
+        if (!existingAttendance) {
+          const classData = await Class.findById(classId);
+          if (classData && classData.students.includes(player.userId)) {
+            await Attendance.create({
+              class: classId,
+              student: player.userId,
+              date: today,
+              status: "present",
+              joinedAt: new Date(),
+            });
 
-    // Force disconnect socket bị kick sau 500ms (cho đủ thời gian event đến client)
-    setTimeout(() => {
-      const targetSocket = io.sockets.sockets.get(targetSocketId)
-      if (targetSocket) {
-        targetSocket.leave(`class_${classId}`)
-        targetSocket.disconnect(true)
+            socket.emit("new_message", {
+              id: `system-attendance-success-${Date.now()}`,
+              sender: "Hệ thống AI",
+              content: `Xác nhận: Sinh viên ${studentName} (MSSV: ${studentIdStr}) đã điểm danh thành công!`,
+              timestamp: new Date().toLocaleTimeString("vi-VN", {
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+              type: "system",
+            });
+            return; // Don't broadcast the attendance message to everyone if preferred, or continue to show it
+          }
+        } else {
+          socket.emit("new_message", {
+            id: `system-attendance-already-${Date.now()}`,
+            sender: "Hệ thống AI",
+            content: `Bạn đã điểm danh cho ngày hôm nay rồi.`,
+            timestamp: new Date().toLocaleTimeString("vi-VN", {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+            type: "system",
+          });
+          return;
+        }
+      } catch (err) {
+        console.error("Chat Attendance Error:", err);
       }
-    }, 500)
+    }
 
-    // Thông báo kết quả cho giáo viên
-    socket.emit('kick_result', { success: true, targetName })
-  })
-
-  socket.on('stream_updated', ({ classId }) => {
-    const room = rooms.get(classId)
-    if (!room || !room.has(socket.id)) return
-    // Thông báo cho tất cả người khác trong phòng biết peer này có stream mới
-    socket.to(`class_${classId}`).emit('peer_stream_updated', {
-      peerId: `peer-${socket.id}`,
-      socketId: socket.id
-    })
-    // Yêu cầu tất cả người khác gọi lại cho peer này
-    socket.to(`class_${classId}`).emit('request_call_back', {
-      peerId: `peer-${socket.id}`
-    })
-  })
-
-  socket.on("send_message", ({ classId, message }) => {
     // Broadcast message to everyone in the room (including sender if needed, but usually handled by client)
     io.to(`class_${classId}`).emit("new_message", message);
   });
@@ -468,22 +595,35 @@ io.on("connection", (socket) => {
     },
   );
 
-  socket.on("disconnect", () => {
+  socket.on("disconnect", async () => {
     console.log("User disconnected:", socket.id);
-    rooms.forEach((players, classId) => {
+    // Find and remove player from any room
+    for (const [classId, players] of rooms.entries()) {
       if (players.has(socket.id)) {
+        const player = players.get(socket.id);
+
+        // Tăng số lần thoát ra cho sinh viên nếu đã được điểm danh
+        if (player.role === "student") {
+          try {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            await Attendance.findOneAndUpdate(
+              {
+                class: classId,
+                student: player.userId,
+                date: { $gte: today },
+              },
+              { $inc: { leaveCount: 1 } },
+            );
+          } catch (err) {
+            console.error("Error updating leave count:", err);
+          }
+        }
+
         players.delete(socket.id);
         io.to(`class_${classId}`).emit("player_left", socket.id);
-        // Nếu người disconnect là sharer thì xóa active share
-        const activeShare = activeScreenShares.get(classId);
-        if (activeShare && activeShare.sharerSocketId === socket.id) {
-          activeScreenShares.delete(classId);
-          io.to(`class_${classId}`).emit("screen_share_stopped", {
-            sharerSocketId: socket.id,
-          });
-        }
       }
-    });
+    }
   });
 });
 
@@ -509,39 +649,73 @@ process.on("SIGTERM", () => {
   });
 });
 
-const PORT = process.env.PORT || 5000;
-server.listen(PORT, "0.0.0.0", () => {
-  console.log(`HTTPS Server running on port ${PORT}`);
-  console.log(`Server URL: https://26.140.16.205:${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV}`);
-  console.log(
-    `Server protocol: ${useLocalHttps ? "HTTPS (local certificate)" : "HTTP"}`,
+const preferredPort = Number(process.env.PORT) || 5000;
+const maxPortAttempts = isProduction ? 1 : 25;
+
+/** Try binding a throwaway TCP server to see if the port is free (avoids repeated server.listen() on the same http.Server). */
+const isPortAvailable = (port) =>
+  new Promise((resolve) => {
+    const tester = net.createServer();
+    const finish = (available) => {
+      tester.removeAllListeners();
+      try {
+        tester.close(() => resolve(available));
+      } catch {
+        resolve(available);
+      }
+    };
+    tester.once("error", () => finish(false));
+    tester.listen(port, "0.0.0.0", () => finish(true));
+  });
+
+const pickListenPort = async () => {
+  for (let i = 0; i < maxPortAttempts; i++) {
+    const port = preferredPort + i;
+    if (await isPortAvailable(port)) {
+      if (i > 0) {
+        console.warn(
+          `[WARN] Port ${preferredPort} is busy; using ${port} instead.`,
+        );
+        console.warn(
+          `  If the frontend cannot reach the API, set in client/.env.local:\n` +
+            `  VITE_BACKEND_URL=http://localhost:${port}\n`,
+        );
+      }
+      return port;
+    }
+  }
+  console.error(
+    `\n[ERROR] Could not bind to a port after ${maxPortAttempts} attempt(s) starting at ${preferredPort}.`,
   );
-  if (allowedOrigins.length > 0) {
-    console.log(`Allowed client origins: ${allowedOrigins.join(", ")}`);
-  }
-  if (hasClientBuild) {
-    console.log(`Serving client build from: ${clientDistPath}`);
-  }
+  console.error(
+    `  Windows: netstat -ano | findstr :${preferredPort}   then   taskkill /PID <pid> /F\n`,
+  );
+  process.exit(1);
+  return preferredPort;
+};
 
-  // Keep-alive: tự ping để Render free tier không bị sleep
-  if (isProduction && process.env.RENDER_EXTERNAL_URL) {
-    const keepAliveUrl = `${process.env.RENDER_EXTERNAL_URL}/health`;
-    setInterval(() => {
-      const protocol = keepAliveUrl.startsWith('https') ? require('https') : require('http');
-      protocol.get(keepAliveUrl, (res) => {
-        console.log(`Keep-alive ping: ${res.statusCode}`);
-      }).on('error', (err) => {
-        console.warn('Keep-alive ping failed:', err.message);
-      });
-    }, 14 * 60 * 1000); // 14 phút
-  }
-});
+(async () => {
+  const listenPort = await pickListenPort();
 
-// Handle server errors
-server.on("error", (error) => {
-  console.error("Server error:", error);
-});
+  server.once("error", (err) => {
+    console.error("Server error:", err);
+    process.exit(1);
+  });
+
+  server.listen(listenPort, "0.0.0.0", () => {
+    console.log(`Server listening on port ${listenPort}`);
+    console.log(`Environment: ${process.env.NODE_ENV}`);
+    console.log(
+      `Server protocol: ${useLocalHttps ? "HTTPS (local certificate)" : "HTTP"}`,
+    );
+    if (allowedOrigins.length > 0) {
+      console.log(`Allowed client origins: ${allowedOrigins.join(", ")}`);
+    }
+    if (hasClientBuild) {
+      console.log(`Serving client build from: ${clientDistPath}`);
+    }
+  });
+})();
 
 server.on("clientError", (err, socket) => {
   console.error("Client error:", err.message);
