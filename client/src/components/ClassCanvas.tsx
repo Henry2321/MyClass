@@ -3267,6 +3267,7 @@ export default function ClassCanvas({ classId }: ClassCanvasProps) {
       <ClassroomChat
         isVisible={isChatVisible}
         onToggle={() => setIsChatVisible(!isChatVisible)}
+        classId={classId}
       />
 
       <canvas

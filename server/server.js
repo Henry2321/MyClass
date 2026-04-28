@@ -449,10 +449,13 @@ io.on("connection", (socket) => {
 
   socket.on("send_message", async ({ classId, message }) => {
     const room = rooms.get(classId);
-    if (!room) return;
+    const player = room?.get(socket.id);
 
-    const player = room.get(socket.id);
-    if (!player) return;
+    // Nếu không tìm thấy room/player, vẫn broadcast nếu socket đang trong room
+    if (!room || !player) {
+      io.to(`class_${classId}`).emit("new_message", message);
+      return;
+    }
 
     // AI Content Moderation
     if (hasProfanity(message.content)) {

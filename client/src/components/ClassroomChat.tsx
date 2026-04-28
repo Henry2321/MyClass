@@ -13,6 +13,7 @@ interface Message {
 interface ClassroomChatProps {
   isVisible: boolean
   onToggle: () => void
+  classId: string
 }
 
 const BAD_WORDS = ['đụ', 'địt', 'lồn', 'cặc', 'đéo', 'vãi', 'chó', 'mẹ mày', 'đmm', 'vcl', 'clm', 'dmm', 'fuck', 'shit', 'bitch', 'ass']
@@ -25,7 +26,7 @@ function filterBadWords(text: string): { clean: string; blocked: boolean } {
   return { clean: text, blocked: false }
 }
 
-export default function ClassroomChat({ isVisible, onToggle }: ClassroomChatProps) {
+export default function ClassroomChat({ isVisible, onToggle, classId }: ClassroomChatProps) {
   const { socket } = useSocket()
   const { user } = useAuth()
   const [messages, setMessages] = useState<Message[]>([
@@ -106,7 +107,7 @@ export default function ClassroomChat({ isVisible, onToggle }: ClassroomChatProp
     })
 
     // Broadcast cho các client khác qua socket
-    socket.emit('send_message', { classId: 'main-class', message })
+    socket.emit('send_message', { classId, message })
     setNewMessage('')
   }
 
