@@ -243,7 +243,6 @@ export default function ClassCanvas({ classId }: ClassCanvasProps) {
     const activeShare = screenShareRef.current;
     const currentUserName = userNameRef.current;
     const currentUserRole = userRoleRef.current;
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
     if (activeShare.isSharing && activeShare.sharerName === currentUserName) {
       return "Dừng chia sẻ";
