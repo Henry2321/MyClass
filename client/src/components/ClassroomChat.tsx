@@ -15,6 +15,16 @@ interface ClassroomChatProps {
   onToggle: () => void
 }
 
+const BAD_WORDS = ['đụ', 'địt', 'lồn', 'cặc', 'đéo', 'vãi', 'chó', 'mẹ mày', 'đmm', 'vcl', 'clm', 'dmm', 'fuck', 'shit', 'bitch', 'ass']
+
+function filterBadWords(text: string): { clean: string; blocked: boolean } {
+  const lower = text.toLowerCase()
+  for (const word of BAD_WORDS) {
+    if (lower.includes(word)) return { clean: text, blocked: true }
+  }
+  return { clean: text, blocked: false }
+}
+
 export default function ClassroomChat({ isVisible, onToggle }: ClassroomChatProps) {
   const { socket } = useSocket()
   const { user } = useAuth()
@@ -35,6 +45,7 @@ export default function ClassroomChat({ isVisible, onToggle }: ClassroomChatProp
     }
   ])
   const [newMessage, setNewMessage] = useState('')
+  const [blockedNotice, setBlockedNotice] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = () => {
@@ -67,27 +78,36 @@ export default function ClassroomChat({ isVisible, onToggle }: ClassroomChatProp
   }, [socket])
 
   const handleSendMessage = () => {
-    if (newMessage.trim() && socket) {
-      const message: Message = {
-        id: Date.now().toString(),
-        sender: user?.name || 'Anonymous', // Sử dụng tên user thực
-        content: newMessage.trim(),
-        timestamp: new Date().toLocaleTimeString('vi-VN', { 
-          hour: '2-digit', 
-          minute: '2-digit' 
-        }),
-        type: 'user'
-      }
-      
-      // Chỉ gửi message qua socket, không thêm vào local state
-      // Server sẽ broadcast lại và tất cả client sẽ nhận được
-      socket.emit('send_message', {
-        classId: 'main-class',
-        message: message
-      })
-      
-      setNewMessage('')
+    if (!newMessage.trim() || !socket) return
+
+    const { blocked } = filterBadWords(newMessage.trim())
+    if (blocked) {
+      setBlockedNotice(true)
+      setTimeout(() => setBlockedNotice(false), 3000)
+      return
     }
+
+    const message: Message = {
+      id: Date.now().toString(),
+      sender: user?.name || 'Anonymous',
+      content: newMessage.trim(),
+      timestamp: new Date().toLocaleTimeString('vi-VN', { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      }),
+      type: 'user'
+    }
+
+    // Thêm vào local state ngay để hiển thị tức thì
+    setMessages(prev => {
+      const exists = prev.some(m => m.id === message.id)
+      if (exists) return prev
+      return [...prev, message]
+    })
+
+    // Broadcast cho các client khác qua socket
+    socket.emit('send_message', { classId: 'main-class', message })
+    setNewMessage('')
   }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -255,6 +275,19 @@ export default function ClassroomChat({ isVisible, onToggle }: ClassroomChatProp
         borderTop: '1px solid #334155',
         backgroundColor: '#0f172a'
       }}>
+        {blockedNotice && (
+          <div style={{
+            backgroundColor: '#7f1d1d',
+            color: '#fca5a5',
+            padding: '8px 12px',
+            borderRadius: '8px',
+            fontSize: '13px',
+            marginBottom: '8px',
+            textAlign: 'center'
+          }}>
+            ⚠️ Tin nhắn chứa từ ngữ không phù hợp, vui lòng chỉnh sửa lại.
+          </div>
+        )}
         <div style={{
           display: 'flex',
           gap: '8px',
