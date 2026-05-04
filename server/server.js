@@ -19,6 +19,7 @@ const User = require("./models/User");
 require("dotenv").config();
 
 const app = express();
+const uploadsPath = path.resolve(__dirname, "uploads");
 // Remove duplicate server declaration - keep only the conditional one below
 const isProduction = process.env.NODE_ENV === "production";
 const clientDistPath = path.resolve(__dirname, "../client/dist");
@@ -139,7 +140,7 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // Static files
-app.use("/uploads", express.static("uploads"));
+app.use("/uploads", express.static(uploadsPath));
 
 // Health check
 app.get("/health", (req, res) => {

@@ -1,5 +1,7 @@
 const express = require("express");
 const multer = require("multer");
+const fs = require("fs");
+const path = require("path");
 const Assignment = require("../models/Assignment");
 const Class = require("../models/Class");
 const { auth, teacherAuth } = require("../middleware/auth");
@@ -9,11 +11,21 @@ const {
 } = require("../utils/notifications");
 
 const router = express.Router();
+const assignmentsUploadDir = path.resolve(
+  __dirname,
+  "..",
+  "uploads",
+  "assignments",
+);
+
+if (!fs.existsSync(assignmentsUploadDir)) {
+  fs.mkdirSync(assignmentsUploadDir, { recursive: true });
+}
 
 // Multer config
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, "uploads/assignments/");
+    cb(null, assignmentsUploadDir);
   },
   filename: (req, file, cb) => {
     cb(null, Date.now() + "-" + file.originalname);
@@ -56,14 +68,14 @@ router.get("/:id/files/:filename", auth, async (req, res) => {
     const assignment = await Assignment.findById(req.params.id);
     if (!assignment)
       return res.status(404).json({ message: "Assignment not found" });
-    const filePath = require("path").resolve(
+    const filePath = path.resolve(
       __dirname,
       "..",
       "uploads",
       "assignments",
       req.params.filename,
     );
-    if (!require("fs").existsSync(filePath))
+    if (!fs.existsSync(filePath))
       return res.status(404).json({ message: "File not found" });
     res.download(filePath);
   } catch (error) {
@@ -84,14 +96,14 @@ router.get("/:id/submissions/files/:filename", auth, async (req, res) => {
     );
     if (!isTeacher && !isStudent)
       return res.status(403).json({ message: "Access denied" });
-    const filePath = require("path").resolve(
+    const filePath = path.resolve(
       __dirname,
       "..",
       "uploads",
       "assignments",
       req.params.filename,
     );
-    if (!require("fs").existsSync(filePath))
+    if (!fs.existsSync(filePath))
       return res.status(404).json({ message: "File not found" });
     res.download(filePath);
   } catch (error) {

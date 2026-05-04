@@ -1,5 +1,6 @@
 const express = require("express");
 const multer = require("multer");
+const fs = require("fs");
 const path = require("path");
 const Lecture = require("../models/Lecture");
 const Class = require("../models/Class");
@@ -10,11 +11,16 @@ const {
 } = require("../utils/notifications");
 
 const router = express.Router();
+const lecturesUploadDir = path.resolve(__dirname, "..", "uploads", "lectures");
+
+if (!fs.existsSync(lecturesUploadDir)) {
+  fs.mkdirSync(lecturesUploadDir, { recursive: true });
+}
 
 // Multer config
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, "uploads/lectures/");
+    cb(null, lecturesUploadDir);
   },
   filename: (req, file, cb) => {
     cb(null, Date.now() + "-" + file.originalname);
@@ -63,7 +69,7 @@ router.get("/:id/files/:filename", auth, async (req, res) => {
       "lectures",
       req.params.filename,
     );
-    if (!require("fs").existsSync(filePath))
+    if (!fs.existsSync(filePath))
       return res.status(404).json({ message: "File not found" });
     res.download(filePath);
   } catch (error) {
