@@ -13,17 +13,25 @@ const {
 const router = express.Router();
 const lecturesUploadDir = path.resolve(__dirname, "..", "uploads", "lectures");
 
-if (!fs.existsSync(lecturesUploadDir)) {
-  fs.mkdirSync(lecturesUploadDir, { recursive: true });
-}
+const ensureUploadDir = () => {
+  if (!fs.existsSync(lecturesUploadDir)) {
+    fs.mkdirSync(lecturesUploadDir, { recursive: true });
+  }
+};
+
+ensureUploadDir();
 
 // Multer config
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
+    ensureUploadDir();
     cb(null, lecturesUploadDir);
   },
   filename: (req, file, cb) => {
-    cb(null, Date.now() + "-" + file.originalname);
+    const safeOriginalName = path
+      .basename(file.originalname)
+      .replace(/[^\w.\-()\s]/g, "_");
+    cb(null, `${Date.now()}-${safeOriginalName}`);
   },
 });
 
@@ -186,7 +194,10 @@ router.post("/", auth, teacherAuth, upload.array("files"), async (req, res) => {
 
     res.status(201).json(lecture);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Create lecture error:", error);
+    res.status(500).json({
+      message: error.message || "Khong the tai len tai lieu bai giang",
+    });
   }
 });
 

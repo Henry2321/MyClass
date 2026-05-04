@@ -18,17 +18,25 @@ const assignmentsUploadDir = path.resolve(
   "assignments",
 );
 
-if (!fs.existsSync(assignmentsUploadDir)) {
-  fs.mkdirSync(assignmentsUploadDir, { recursive: true });
-}
+const ensureUploadDir = () => {
+  if (!fs.existsSync(assignmentsUploadDir)) {
+    fs.mkdirSync(assignmentsUploadDir, { recursive: true });
+  }
+};
+
+ensureUploadDir();
 
 // Multer config
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
+    ensureUploadDir();
     cb(null, assignmentsUploadDir);
   },
   filename: (req, file, cb) => {
-    cb(null, Date.now() + "-" + file.originalname);
+    const safeOriginalName = path
+      .basename(file.originalname)
+      .replace(/[^\w.\-()\s]/g, "_");
+    cb(null, `${Date.now()}-${safeOriginalName}`);
   },
 });
 

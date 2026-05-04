@@ -627,7 +627,7 @@ export default function Classes({ onJoinClassroom }: ClassesProps) {
     setJoinLoading(true);
 
     const formData = new FormData(e.target as HTMLFormElement);
-    const classCode = formData.get("code") as string;
+    const classCode = ((formData.get("code") as string) || "").trim().toUpperCase();
 
     try {
       const token = localStorage.getItem("token");
@@ -639,6 +639,22 @@ export default function Classes({ onJoinClassroom }: ClassesProps) {
         },
         body: JSON.stringify({ code: classCode }),
       });
+
+      const result = await response.clone().json();
+
+      if (response.ok) {
+        setShowJoinForm(false);
+        await fetchClasses();
+        alert("Tham gia lớp học thành công!");
+        return;
+      }
+
+      if (result.message === "Already joined this class") {
+        setShowJoinForm(false);
+        await fetchClasses();
+        alert("Bạn đã tham gia lớp này rồi.");
+        return;
+      }
 
       if (response.ok) {
         setShowJoinForm(false);

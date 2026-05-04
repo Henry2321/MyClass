@@ -4,6 +4,7 @@ const User = require("../models/User");
 const { auth, teacherAuth } = require("../middleware/auth");
 const {
   createActivity,
+  createNotification,
   notifyClassStudents,
 } = require("../utils/notifications");
 
@@ -99,6 +100,7 @@ router.post("/join", auth, async (req, res) => {
 
     res.json({ message: "Successfully joined class", class: classToJoin });
   } catch (error) {
+    console.error("Join class error:", error);
     res.status(500).json({ message: error.message });
   }
 });
