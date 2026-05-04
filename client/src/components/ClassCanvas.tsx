@@ -91,7 +91,17 @@ export default function ClassCanvas({ classId }: ClassCanvasProps) {
   const [userName, setUserName] = useState("");
   const [studentId, setStudentId] = useState("");
   const { user } = useAuth();
-  const [selectedCharIndex, setSelectedCharIndex] = useState(0);
+  const teacherCharacter = "adam";
+  const studentCharacters = ["ash", "lucy", "nancy"];
+
+  const getStudentAvatarIndex = (avatar?: string) => {
+    const index = studentCharacters.indexOf(avatar || "");
+    return index >= 0 ? index : 0;
+  };
+
+  const [selectedCharIndex, setSelectedCharIndex] = useState(() =>
+    getStudentAvatarIndex(user?.avatar),
+  );
 
   const [screenShare, setScreenShare] = useState<ScreenShareState>({
     isSharing: false,
@@ -198,6 +208,12 @@ export default function ClassCanvas({ classId }: ClassCanvasProps) {
   useEffect(() => {
     userRoleRef.current = user?.role === "teacher" ? "teacher" : "student";
   }, [user?.role]);
+
+  useEffect(() => {
+    if (user?.role === "student" && user?.avatar) {
+      setSelectedCharIndex(getStudentAvatarIndex(user.avatar));
+    }
+  }, [user?.avatar, user?.role]);
 
   useEffect(() => {
     seatActionUiRef.current = seatActionUi;
@@ -756,7 +772,6 @@ export default function ClassCanvas({ classId }: ClassCanvasProps) {
     }
   };
 
-  const characters = ["adam", "ash", "lucy", "nancy"];
   const handleImportStudents = async () => {
     const input = document.createElement("input");
     input.type = "file";
@@ -889,8 +904,10 @@ export default function ClassCanvas({ classId }: ClassCanvasProps) {
     }
   }, [showAttendancePanel]);
 
-  const teacherCharacter = "adam";
-  const studentCharacters = ["ash", "lucy", "nancy"];
+  const currentAvatar =
+    user?.role === "teacher"
+      ? teacherCharacter
+      : studentCharacters[selectedCharIndex] || studentCharacters[0];
 
   const player = useRef({
     x: 104,
@@ -980,10 +997,7 @@ export default function ClassCanvas({ classId }: ClassCanvasProps) {
         dbId: user?.id || (user as any)?._id, // Gửi ID thực từ Database
         mssv: studentId, // Gửi MSSV nhập từ ô input
         name: userName,
-        avatar:
-          user?.role === "teacher"
-            ? teacherCharacter
-            : studentCharacters[selectedCharIndex],
+        avatar: currentAvatar,
         peerId: `peer-${socket.id}`,
         role: user?.role || "student",
         isCamOn: isCamOnRef.current,
@@ -1353,7 +1367,7 @@ export default function ClassCanvas({ classId }: ClassCanvasProps) {
     };
 
     const playerImg = new Image();
-    playerImg.src = `/sprites/${characters[selectedCharIndex]}.png`;
+    playerImg.src = `/sprites/${currentAvatar}.png`;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       // Bắt cả key và code để tăng độ chính xác
@@ -2168,7 +2182,7 @@ export default function ClassCanvas({ classId }: ClassCanvasProps) {
                     style={{
                       width: "32px",
                       height: "48px",
-                      backgroundImage: `url(/sprites/${user?.role === "teacher" ? teacherCharacter : studentCharacters[selectedCharIndex]}.png)`,
+                      backgroundImage: `url(/sprites/${currentAvatar}.png)`,
                       backgroundPosition: "0px 0px",
                       backgroundRepeat: "no-repeat",
                       transform: "scale(3.5)",

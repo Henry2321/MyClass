@@ -12,6 +12,7 @@ interface User {
   name: string;
   email: string;
   role: "teacher" | "student";
+  avatar?: string;
 }
 
 interface AuthContextType {
@@ -74,6 +75,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           name: data.user.name,
           email: data.user.email,
           role: data.user.role,
+          avatar: data.user.avatar,
         });
       } else {
         // Token không hợp lệ, xóa dữ liệu

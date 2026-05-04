@@ -121,6 +121,7 @@ router.post('/login', validateInput, async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        avatar: user.avatar,
         roleDisplay: user.getRoleDisplay(),
         lastLogin: user.lastLogin
       }
