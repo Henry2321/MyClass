@@ -56,7 +56,6 @@ interface SeatActionUi {
   shareLabel: string;
 }
 
-const CLASSROOM_ID = "main-class";
 const CHAIR_SEAT_TILES = [4485, 4486, 4501, 4502];
 const LEFT_FACING_CHAIR_TILES = [4485, 4501];
 const SIT_RANGE = 48;
@@ -486,7 +485,7 @@ export default function ClassCanvas({ classId }: ClassCanvasProps) {
       myStreamRef.current = streamToUse;
 
       if (socket) {
-        socket.emit("stream_updated", { classId: CLASSROOM_ID });
+        socket.emit("stream_updated", { classId });
       }
 
       if (peer) {
@@ -588,7 +587,7 @@ export default function ClassCanvas({ classId }: ClassCanvasProps) {
         // Thông báo cho server và các client khác
         if (socket) {
           socket.emit("start_screen_share", {
-            classId: CLASSROOM_ID,
+            classId,
             sharerName: currentUserName,
             sharerRole: currentUserRole,
           });
@@ -662,7 +661,7 @@ export default function ClassCanvas({ classId }: ClassCanvasProps) {
     // Thông báo cho server khi dừng share
     if (socket) {
       socket.emit("stop_screen_share", {
-        classId: CLASSROOM_ID,
+        classId,
       });
     }
 
@@ -689,7 +688,7 @@ export default function ClassCanvas({ classId }: ClassCanvasProps) {
     pc.onicecandidate = (event) => {
       if (event.candidate && socket) {
         socket.emit("screen_share_ice_candidate", {
-          classId: CLASSROOM_ID,
+          classId,
           targetSocketId,
           candidate: event.candidate,
         });
@@ -730,7 +729,7 @@ export default function ClassCanvas({ classId }: ClassCanvasProps) {
 
       if (socket) {
         socket.emit("screen_share_offer", {
-          classId: CLASSROOM_ID,
+          classId,
           targetSocketId,
           offer,
         });
@@ -932,7 +931,7 @@ export default function ClassCanvas({ classId }: ClassCanvasProps) {
     if (!socket || user?.role !== "teacher") return;
 
     socket.emit("teacher_media_control", {
-      classId: CLASSROOM_ID,
+      classId,
       targetSocketId,
       mediaType,
       enabled,
