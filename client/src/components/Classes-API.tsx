@@ -627,7 +627,7 @@ export default function Classes({ onJoinClassroom }: ClassesProps) {
     setJoinLoading(true);
 
     const formData = new FormData(e.target as HTMLFormElement);
-    const classCode = ((formData.get("code") as string) || "").trim().toUpperCase();
+    const classCode = formData.get("code") as string;
 
     try {
       const token = localStorage.getItem("token");

@@ -260,27 +260,12 @@ io.on("connection", (socket) => {
               "mssv",
             );
 
-            // AI đối soát bằng MSSV: Kiểm tra xem MSSV nhập vào có nằm trong danh sách MSSV của lớp không
-            const isInClassList =
-              classData && classData.students.some((s) => s.mssv === user.mssv);
-
-            if (isInClassList) {
-              await Attendance.create({
-                class: classId,
-                student: realUserId,
-                date: today,
-                status: "present",
-                joinedAt: new Date(),
-              });
-
-              console.log(
-                `AI Attendance Auto: Marked ${user.name} (MSSV: ${user.mssv}) as present`,
-              );
-
+            if (!classData) {
+              console.log(`AI Attendance: Class ${classId} not found`);
               socket.emit("new_message", {
-                id: `system-attendance-auto-${Date.now()}`,
+                id: `system-attendance-error-${Date.now()}`,
                 sender: "Hệ thống AI",
-                content: `[TỰ ĐỘNG] Xác nhận: Sinh viên ${user.name} (MSSV: ${user.mssv}) đã được điểm danh thành công!`,
+                content: "Không tìm thấy thông tin lớp học.",
                 timestamp: new Date().toLocaleTimeString("vi-VN", {
                   hour: "2-digit",
                   minute: "2-digit",
@@ -288,18 +273,84 @@ io.on("connection", (socket) => {
                 type: "system",
               });
             } else {
-              console.log(
-                `AI Attendance: MSSV ${user.mssv} not found in class ${classId}`,
+              // Kiểm tra xem sinh viên có trong lớp không (dựa trên userId hoặc MSSV)
+              const isStudentInClass = classData.students.some(
+                (s) => s._id.toString() === realUserId.toString()
               );
+              
+              // AI đối soát bằng MSSV: Kiểm tra xem MSSV nhập vào có nằm trong danh sách MSSV của lớp không
+              const isMssvInClassList =
+                user.mssv && classData.students.some((s) => s.mssv === user.mssv);
+
+              if (isStudentInClass || isMssvInClassList) {
+                await Attendance.create({
+                  class: classId,
+                  student: realUserId,
+                  date: today,
+                  status: "present",
+                  joinedAt: new Date(),
+                });
+
+                console.log(
+                  `AI Attendance Auto: Marked ${user.name} (MSSV: ${user.mssv || "N/A"}) as present`,
+                );
+
+                socket.emit("new_message", {
+                  id: `system-attendance-auto-${Date.now()}`,
+                  sender: "Hệ thống AI",
+                  content: `[TỰ ĐỘNG] Xác nhận: Sinh viên ${user.name} ${user.mssv ? `(MSSV: ${user.mssv})` : ""} đã được điểm danh thành công!`,
+                  timestamp: new Date().toLocaleTimeString("vi-VN", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  }),
+                  type: "system",
+                });
+              } else {
+                console.log(
+                  `AI Attendance: User ${user.name} (MSSV: ${user.mssv || "N/A"}) not in class ${classId}`,
+                );
+                socket.emit("new_message", {
+                  id: `system-attendance-error-${Date.now()}`,
+                  sender: "Hệ thống AI",
+                  content: user.mssv 
+                    ? `MSSV ${user.mssv} không nằm trong danh sách lớp học này.`
+                    : "Bạn không nằm trong danh sách lớp học này. Vui lòng nhập MSSV để điểm danh.",
+                  timestamp: new Date().toLocaleTimeString("vi-VN", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  }),
+                  type: "system",
+                });
+              }
             }
           }
         } else {
           console.log(
             `AI Attendance: Could not find user with MSSV ${user.mssv}`,
           );
+          socket.emit("new_message", {
+            id: `system-attendance-error-${Date.now()}`,
+            sender: "Hệ thống AI",
+            content: "Không tìm thấy thông tin người dùng. Vui lòng kiểm tra lại MSSV.",
+            timestamp: new Date().toLocaleTimeString("vi-VN", {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+            type: "system",
+          });
         }
       } catch (err) {
         console.error("AI Auto Attendance Error:", err);
+        socket.emit("new_message", {
+          id: `system-attendance-error-${Date.now()}`,
+          sender: "Hệ thống AI",
+          content: "Đã xảy ra lỗi khi điểm danh. Vui lòng thử lại sau.",
+          timestamp: new Date().toLocaleTimeString("vi-VN", {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          type: "system",
+        });
       }
     }
 
@@ -459,11 +510,19 @@ io.on("connection", (socket) => {
     }
 
     // AI Content Moderation
-    if (hasProfanity(message.content)) {
+    const isProfane = await hasProfanity(message.content);
+    if (isProfane) {
+      const warningCount = incrementUserWarning(player.userId);
+      let warningMessage = "Tin nhắn của bạn chứa từ ngữ không phù hợp và đã bị chặn.";
+      
+      if (warningCount >= 3) {
+        warningMessage = "Tin nhắn của bạn chứa từ ngữ không phù hợp. Bạn đã bị cảnh cáo nhiều lần, vui lòng ngừng hành vi này.";
+      }
+      
       socket.emit("new_message", {
         id: `system-${Date.now()}`,
         sender: "Hệ thống AI",
-        content: "Tin nhắn của bạn chứa từ ngữ không phù hợp và đã bị chặn.",
+        content: warningMessage,
         timestamp: new Date().toLocaleTimeString("vi-VN", {
           hour: "2-digit",
           minute: "2-digit",
@@ -506,27 +565,62 @@ io.on("connection", (socket) => {
         });
 
         if (!existingAttendance) {
-          const classData = await Class.findById(classId);
-          if (classData && classData.students.includes(player.userId)) {
-            await Attendance.create({
-              class: classId,
-              student: player.userId,
-              date: today,
-              status: "present",
-              joinedAt: new Date(),
-            });
-
+          const classData = await Class.findById(classId).populate("students", "mssv name");
+          
+          if (!classData) {
             socket.emit("new_message", {
-              id: `system-attendance-success-${Date.now()}`,
+              id: `system-attendance-error-${Date.now()}`,
               sender: "Hệ thống AI",
-              content: `Xác nhận: Sinh viên ${studentName} (MSSV: ${studentIdStr}) đã điểm danh thành công!`,
+              content: "Không tìm thấy thông tin lớp học.",
               timestamp: new Date().toLocaleTimeString("vi-VN", {
                 hour: "2-digit",
                 minute: "2-digit",
               }),
               type: "system",
             });
-            return; // Don't broadcast the attendance message to everyone if preferred, or continue to show it
+          } else {
+            // Kiểm tra xem sinh viên có trong lớp không và MSSV có khớp không
+            const isStudentInClass = classData.students.some(
+              (s) => s._id.toString() === player.userId.toString()
+            );
+            
+            const isMssvMatch = classData.students.some(
+              (s) => s.mssv === studentIdStr
+            );
+
+            if (isStudentInClass || isMssvMatch) {
+              await Attendance.create({
+                class: classId,
+                student: player.userId,
+                date: today,
+                status: "present",
+                joinedAt: new Date(),
+              });
+
+              socket.emit("new_message", {
+                id: `system-attendance-success-${Date.now()}`,
+                sender: "Hệ thống AI",
+                content: `Xác nhận: Sinh viên ${studentName} (MSSV: ${studentIdStr}) đã điểm danh thành công!`,
+                timestamp: new Date().toLocaleTimeString("vi-VN", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }),
+                type: "system",
+              });
+              return;
+            } else {
+              socket.emit("new_message", {
+                id: `system-attendance-error-${Date.now()}`,
+                sender: "Hệ thống AI",
+                content: `MSSV ${studentIdStr} không nằm trong danh sách lớp học này.`,
+                timestamp: new Date().toLocaleTimeString("vi-VN", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }),
+                type: "system",
+              });
+              return;
+            }
           }
         } else {
           socket.emit("new_message", {
@@ -543,6 +637,16 @@ io.on("connection", (socket) => {
         }
       } catch (err) {
         console.error("Chat Attendance Error:", err);
+        socket.emit("new_message", {
+          id: `system-attendance-error-${Date.now()}`,
+          sender: "Hệ thống AI",
+          content: "Đã xảy ra lỗi khi điểm danh. Vui lòng thử lại sau.",
+          timestamp: new Date().toLocaleTimeString("vi-VN", {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          type: "system",
+        });
       }
     }
 

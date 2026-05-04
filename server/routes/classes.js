@@ -4,7 +4,6 @@ const User = require("../models/User");
 const { auth, teacherAuth } = require("../middleware/auth");
 const {
   createActivity,
-  createNotification,
   notifyClassStudents,
 } = require("../utils/notifications");
 

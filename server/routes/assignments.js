@@ -18,13 +18,9 @@ const assignmentsUploadDir = path.resolve(
   "assignments",
 );
 
-const ensureUploadDir = () => {
-  if (!fs.existsSync(assignmentsUploadDir)) {
-    fs.mkdirSync(assignmentsUploadDir, { recursive: true });
-  }
-};
-
-ensureUploadDir();
+if (!fs.existsSync(assignmentsUploadDir)) {
+  fs.mkdirSync(assignmentsUploadDir, { recursive: true });
+}
 
 // Multer config
 const storage = multer.diskStorage({

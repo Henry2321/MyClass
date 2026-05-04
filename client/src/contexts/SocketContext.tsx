@@ -27,8 +27,8 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({
       const socketOptions = {
         path: SOCKET_PATH,
         withCredentials: true,
-        transports: ["polling"], // Chỉ dùng polling
-        timeout: 30000, // Tăng timeout
+        transports: ["websocket", "polling"],
+        timeout: 30000,
         forceNew: true,
         reconnection: true,
         reconnectionAttempts: 10,

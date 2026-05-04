@@ -13,25 +13,17 @@ const {
 const router = express.Router();
 const lecturesUploadDir = path.resolve(__dirname, "..", "uploads", "lectures");
 
-const ensureUploadDir = () => {
-  if (!fs.existsSync(lecturesUploadDir)) {
-    fs.mkdirSync(lecturesUploadDir, { recursive: true });
-  }
-};
-
-ensureUploadDir();
+if (!fs.existsSync(lecturesUploadDir)) {
+  fs.mkdirSync(lecturesUploadDir, { recursive: true });
+}
 
 // Multer config
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    ensureUploadDir();
     cb(null, lecturesUploadDir);
   },
   filename: (req, file, cb) => {
-    const safeOriginalName = path
-      .basename(file.originalname)
-      .replace(/[^\w.\-()\s]/g, "_");
-    cb(null, `${Date.now()}-${safeOriginalName}`);
+    cb(null, Date.now() + "-" + file.originalname);
   },
 });
 
