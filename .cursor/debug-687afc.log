@@ -1,0 +1,3 @@
+{"sessionId":"687afc","runId":"pre-debug","hypothesisId":"H1","location":"client/src/main.tsx:6","message":"client boot (React mount)","data":{"href":"https://localhost:5173/"},"timestamp":1775148274428}
+{"sessionId":"687afc","runId":"pre-debug","hypothesisId":"H2","location":"client/src/contexts/AuthContext.tsx:37","message":"auth init localStorage state","data":{"tokenPresent":false,"savedUserPresent":false,"tokenLen":0},"timestamp":1775148274471}
+{"sessionId":"687afc","runId":"pre-debug","hypothesisId":"H2","location":"client/src/contexts/AuthContext.tsx:37","message":"auth init localStorage state","data":{"tokenPresent":false,"savedUserPresent":false,"tokenLen":0},"timestamp":1775148274473}
