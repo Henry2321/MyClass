@@ -27,13 +27,12 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({
       const socketOptions = {
         path: SOCKET_PATH,
         withCredentials: true,
-        transports: ["websocket", "polling"],
+        transports: ["polling", "websocket"],
         timeout: 30000,
         forceNew: true,
         reconnection: true,
         reconnectionAttempts: 10,
         reconnectionDelay: 2000,
-        upgrade: false, // Tắt upgrade để tránh WebSocket issues
       };
 
       const socketServerUrl = REALTIME_BASE_URL || window.location.origin;

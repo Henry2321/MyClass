@@ -71,6 +71,12 @@ const isOriginAllowed = (origin) => {
   if (!origin) return true;
   const normalizedOrigin = normalizeOrigin(origin);
   if (!isProduction) return true;
+  if (allowedOrigins.length === 0) {
+    console.warn(
+      "CLIENT_URL is not configured in production. Allowing all origins for realtime/API access.",
+    );
+    return true;
+  }
   return allowedOrigins.includes(normalizedOrigin);
 };
 
