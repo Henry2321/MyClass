@@ -971,29 +971,6 @@ export default function ClassCanvas({ classId }: ClassCanvasProps) {
     setParticipantRoster([]);
 
     // Join classroom via socket
-    // #region agent log
-    fetch("http://127.0.0.1:7887/ingest/e94691c6-ad0a-42cd-9247-f9986cc7c541", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "687afc",
-      },
-      body: JSON.stringify({
-        sessionId: "687afc",
-        runId: "pre-debug",
-        hypothesisId: "H5",
-        location: "client/src/components/ClassCanvas.tsx:728",
-        message: "emit join_classroom",
-        data: {
-          isJoined,
-          hasSocket: !!socket,
-          socketId: socket?.id || null,
-          classId: classId,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
     socket.emit("join_classroom", {
       classId: classId,
       user: {

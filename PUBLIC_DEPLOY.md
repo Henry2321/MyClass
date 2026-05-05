@@ -68,6 +68,8 @@ If you deploy the frontend and backend on different public domains, then set the
 - `VITE_PEER_SERVER_URL`
 - `VITE_PEER_PATH`
 
+If your API, Socket.IO server, and PeerJS server all run on the same backend domain, you can set only `VITE_API_BASE_URL` and leave the socket/peer URLs empty.
+
 See `client/.env.production.example`.
 
 ## Important note about voice/WebRTC

@@ -1,4 +1,6 @@
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/, "");
+const trimApiSuffix = (value: string) =>
+  trimTrailingSlash(value).replace(/\/api$/i, "");
 
 // Leave empty in dev so requests go through the Vite proxy.
 export const API_BASE_URL = trimTrailingSlash(
@@ -6,6 +8,10 @@ export const API_BASE_URL = trimTrailingSlash(
 );
 export const SOCKET_URL = trimTrailingSlash(
   import.meta.env.VITE_SOCKET_URL || "",
+);
+export const REALTIME_BASE_URL = trimApiSuffix(SOCKET_URL || API_BASE_URL || "");
+export const PEER_SERVER_URL = trimApiSuffix(
+  import.meta.env.VITE_PEER_SERVER_URL || REALTIME_BASE_URL || "",
 );
 export const SOCKET_PATH = import.meta.env.VITE_SOCKET_PATH || "/socket.io";
 
@@ -20,9 +26,7 @@ export const getApiUrl = (path: string) => {
 
 export const getPeerConnectionOptions = () => {
   const peerPath = import.meta.env.VITE_PEER_PATH || "/peerjs";
-  const configuredPeerUrl = trimTrailingSlash(
-    import.meta.env.VITE_PEER_SERVER_URL || "",
-  );
+  const configuredPeerUrl = trimTrailingSlash(PEER_SERVER_URL);
 
   // Nếu VITE_PEER_SERVER_URL có chứa path trùng với peerPath thì bỏ path đó đi
   const cleanPeerUrl = configuredPeerUrl.endsWith(peerPath)
