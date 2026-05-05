@@ -235,6 +235,7 @@ router.post("/:id/import-students", auth, teacherAuth, async (req, res) => {
     });
 
     await classData.save();
+    const mssvs = { length: addedCount };
 
     res.json({
       message: `Đã upload thành công ${mssvs.length} sinh viên vào lớp.`,

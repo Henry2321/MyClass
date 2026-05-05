@@ -147,16 +147,22 @@ export default function Lectures() {
         throw new Error(data.message || "Tạo bài giảng thất bại");
       }
 
+      let nextLecture: Lecture = data;
+
       if (publish) {
         const publishResponse = await apiCall(`/api/lectures/${data._id}/publish`, {
           method: "PATCH",
         });
-        if (publishResponse.ok) {
-          data.isPublished = true;
+        const publishData = (await publishResponse.json()) as Lecture & ApiMessage;
+        if (!publishResponse.ok) {
+          throw new Error(
+            publishData.message || "Xuáº¥t báº£n bĂ i giáº£ng tháº¥t báº¡i",
+          );
         }
+        nextLecture = { ...data, ...publishData, isPublished: true };
       }
 
-      setLectures((prev) => [data, ...prev]);
+      setLectures((prev) => [nextLecture, ...prev]);
       setShowCreateModal(false);
       resetForm();
     } catch (submitError) {

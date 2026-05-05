@@ -38,6 +38,18 @@ const errorHandler = (err, req, res, next) => {
     });
   }
 
+  if (err.name === 'MulterError') {
+    return res.status(400).json({
+      message: err.message || 'Upload file thất bại'
+    });
+  }
+
+  if (err.code === 'ENOENT') {
+    return res.status(500).json({
+      message: err.message || 'Thư mục upload trên server không tồn tại'
+    });
+  }
+
   // Default error
   res.status(err.statusCode || 500).json({
     message: err.message || 'Internal Server Error'
