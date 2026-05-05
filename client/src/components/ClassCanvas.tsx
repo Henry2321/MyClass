@@ -3,7 +3,7 @@ import { useAuth } from "../contexts/AuthContext";
 import ClassroomChat from "./ClassroomChat";
 // @ts-ignore
 import * as XLSX from "xlsx";
-import { getApiUrl } from "../utils/api";
+import { getApiUrl, getIceServers } from "../utils/api";
 
 interface ScreenShareState {
   isSharing: boolean;
@@ -157,6 +157,10 @@ export default function ClassCanvas({ classId }: ClassCanvasProps) {
   const screenShareConnections = useRef<Map<string, RTCPeerConnection>>(
     new Map(),
   );
+  const pendingScreenShareCandidates = useRef<
+    Map<string, RTCIceCandidateInit[]>
+  >(new Map());
+  const screenShareVideoRef = useRef<HTMLVideoElement>(null);
   const [, setIsReceivingScreenShare] = useState(false);
 
   const seatActionUiRef = useRef<SeatActionUi>({
@@ -183,6 +187,24 @@ export default function ClassCanvas({ classId }: ClassCanvasProps) {
   useEffect(() => {
     screenShareRef.current = screenShare;
   }, [screenShare]);
+
+  useEffect(() => {
+    const video = screenShareVideoRef.current;
+    if (!video || !screenShare.stream) return;
+
+    if (video.srcObject !== screenShare.stream) {
+      video.srcObject = screenShare.stream;
+    }
+
+    video.play().catch(async () => {
+      try {
+        video.muted = true;
+        await video.play();
+      } catch (error) {
+        console.error("Unable to autoplay screen share stream:", error);
+      }
+    });
+  }, [screenShare.stream]);
 
   useEffect(() => {
     localStreamRef.current = localStream;
@@ -686,7 +708,35 @@ export default function ClassCanvas({ classId }: ClassCanvasProps) {
       pc.close();
     });
     screenShareConnections.current.clear();
+    pendingScreenShareCandidates.current.clear();
     setIsReceivingScreenShare(false);
+  };
+
+  const queueScreenShareCandidate = (
+    socketId: string,
+    candidate: RTCIceCandidateInit,
+  ) => {
+    const existing = pendingScreenShareCandidates.current.get(socketId) || [];
+    existing.push(candidate);
+    pendingScreenShareCandidates.current.set(socketId, existing);
+  };
+
+  const flushPendingScreenShareCandidates = async (
+    socketId: string,
+    pc: RTCPeerConnection,
+  ) => {
+    const pending = pendingScreenShareCandidates.current.get(socketId) || [];
+    if (pending.length === 0) return;
+
+    for (const candidate of pending) {
+      try {
+        await pc.addIceCandidate(candidate);
+      } catch (error) {
+        console.error("Error applying queued screen share ICE candidate:", error);
+      }
+    }
+
+    pendingScreenShareCandidates.current.delete(socketId);
   };
 
   // WebRTC Screen Sharing Functions
@@ -694,11 +744,14 @@ export default function ClassCanvas({ classId }: ClassCanvasProps) {
     targetSocketId: string,
     isOfferer: boolean,
   ) => {
+    const existing = screenShareConnections.current.get(targetSocketId);
+    if (existing) {
+      existing.close();
+      screenShareConnections.current.delete(targetSocketId);
+    }
+
     const pc = new RTCPeerConnection({
-      iceServers: [
-        { urls: "stun:stun.l.google.com:19302" },
-        { urls: "stun:stun1.l.google.com:19302" },
-      ],
+      iceServers: getIceServers(),
     });
 
     pc.onicecandidate = (event) => {
@@ -714,16 +767,33 @@ export default function ClassCanvas({ classId }: ClassCanvasProps) {
     if (!isOfferer) {
       // Viewer: nhận stream từ sharer
       pc.ontrack = (event) => {
-        console.log("Received screen share stream:", event.streams[0]);
+        const incomingStream =
+          event.streams[0] ||
+          screenShareRef.current.stream ||
+          new MediaStream();
+
+        if (!event.streams[0]) {
+          incomingStream.addTrack(event.track);
+        }
+
+        console.log("Received screen share stream:", incomingStream);
         const nextShareState: ScreenShareState = {
           ...screenShareRef.current,
-          stream: event.streams[0],
+          stream: incomingStream,
         };
         screenShareRef.current = nextShareState;
         setScreenShare(nextShareState);
         setIsReceivingScreenShare(true);
       };
     }
+
+    pc.onconnectionstatechange = () => {
+      console.log(
+        "Screen share connection state:",
+        targetSocketId,
+        pc.connectionState,
+      );
+    };
 
     screenShareConnections.current.set(targetSocketId, pc);
     return pc;
@@ -1164,6 +1234,7 @@ export default function ClassCanvas({ classId }: ClassCanvasProps) {
 
       try {
         await pc.setRemoteDescription(offer);
+        await flushPendingScreenShareCandidates(sharerSocketId, pc);
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
 
@@ -1183,6 +1254,7 @@ export default function ClassCanvas({ classId }: ClassCanvasProps) {
       if (pc) {
         try {
           await pc.setRemoteDescription(answer);
+          await flushPendingScreenShareCandidates(viewerSocketId, pc);
         } catch (error) {
           console.error("Error handling screen share answer:", error);
         }
@@ -1194,18 +1266,27 @@ export default function ClassCanvas({ classId }: ClassCanvasProps) {
       async ({ fromSocketId, candidate }) => {
         console.log("Received screen share ICE candidate from:", fromSocketId);
         const pc = screenShareConnections.current.get(fromSocketId);
-        if (pc) {
-          try {
-            await pc.addIceCandidate(candidate);
-          } catch (error) {
-            console.error("Error adding screen share ICE candidate:", error);
-          }
+        if (!pc || !pc.remoteDescription) {
+          queueScreenShareCandidate(fromSocketId, candidate);
+          return;
+        }
+
+        try {
+          await pc.addIceCandidate(candidate);
+        } catch (error) {
+          console.error("Error adding screen share ICE candidate:", error);
         }
       },
     );
 
     socket.on("screen_share_stopped", ({ sharerSocketId }) => {
       console.log("Screen share stopped by:", sharerSocketId);
+      const pc = screenShareConnections.current.get(sharerSocketId);
+      if (pc) {
+        pc.close();
+        screenShareConnections.current.delete(sharerSocketId);
+      }
+      pendingScreenShareCandidates.current.delete(sharerSocketId);
       if (screenShareRef.current.sharerSocketId === sharerSocketId) {
         const nextShareState: ScreenShareState = {
           isSharing: false,
@@ -2604,18 +2685,15 @@ export default function ClassCanvas({ classId }: ClassCanvasProps) {
 
           {screenShare.stream ? (
             <video
+              ref={screenShareVideoRef}
               autoPlay
               playsInline
+              controls={false}
               style={{
                 width: "100%",
                 height: "100%",
                 objectFit: "contain",
                 borderRadius: "8px",
-              }}
-              ref={(video) => {
-                if (video && screenShare.stream) {
-                  video.srcObject = screenShare.stream;
-                }
               }}
             />
           ) : (
