@@ -43,6 +43,7 @@ interface AssignmentRecord {
   submissions: SubmissionRecord[];
   isPublished: boolean;
   createdAt: string;
+  message?: string;
 }
 
 interface ClassOption {
