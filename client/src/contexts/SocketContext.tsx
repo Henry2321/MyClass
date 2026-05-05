@@ -26,8 +26,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({
     if (isAuthenticated && user) {
       const socketOptions = {
         path: SOCKET_PATH,
-        withCredentials: true,
-        transports: ["polling", "websocket"],
+        transports: ["polling"],
         timeout: 30000,
         forceNew: true,
         reconnection: true,
