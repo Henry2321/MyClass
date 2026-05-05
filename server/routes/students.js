@@ -2,6 +2,7 @@ const express = require("express");
 const User = require("../models/User");
 const Class = require("../models/Class");
 const Assignment = require("../models/Assignment");
+const Attendance = require("../models/Attendance");
 const { auth, teacherAuth } = require("../middleware/auth");
 
 const router = express.Router();

@@ -890,6 +890,9 @@ export default function ClassCanvas({ classId }: ClassCanvasProps) {
       if (res.ok) {
         const data = await res.json();
         setAttendanceList(data);
+      } else {
+        const errorText = await res.text();
+        console.error("Attendance API error:", res.status, errorText);
       }
     } catch (error) {
       console.error("Error fetching attendance:", error);
